@@ -11,5 +11,8 @@ ALBUM_DEBOUNCE_SECONDS = 4
 SOFT_PHOTO_LIMIT = 10
 HARD_PHOTO_LIMIT = 20
 
+# Ограничение Bot API: в одном send_media_group не больше 10 элементов.
+TELEGRAM_MEDIA_GROUP_MAX = 10
+
 # Длина одноразового токена привязки охранника (байты hex).
 BIND_TOKEN_BYTES = 8

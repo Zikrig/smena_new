@@ -10,7 +10,12 @@ from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InputMediaPhoto, Message
 
-from constants import ALBUM_DEBOUNCE_SECONDS, HARD_PHOTO_LIMIT, SOFT_PHOTO_LIMIT
+from constants import (
+    ALBUM_DEBOUNCE_SECONDS,
+    HARD_PHOTO_LIMIT,
+    SOFT_PHOTO_LIMIT,
+    TELEGRAM_MEDIA_GROUP_MAX,
+)
 from db.database import Database
 import texts_ru as T
 from keyboards import accounted_markup, main_menu_keyboard
@@ -595,6 +600,26 @@ async def svc_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
+async def _send_photos_in_album_chunks(
+    bot,
+    chat_id: int,
+    entries: List[dict],
+    caption_on_first: str,
+) -> int:
+    """Telegram: не более TELEGRAM_MEDIA_GROUP_MAX фото в одном альбоме; при большем числе — несколько альбомов."""
+    first_message_id: Optional[int] = None
+    for start in range(0, len(entries), TELEGRAM_MEDIA_GROUP_MAX):
+        chunk = entries[start : start + TELEGRAM_MEDIA_GROUP_MAX]
+        medias = [InputMediaPhoto(media=e["file_id"]) for e in chunk]
+        if start == 0:
+            medias[0].caption = caption_on_first
+        msgs = await bot.send_media_group(chat_id=chat_id, media=medias)
+        if first_message_id is None:
+            first_message_id = msgs[0].message_id
+    assert first_message_id is not None
+    return first_message_id
+
+
 async def _send_to_group_and_log(
     bot,
     db: Database,
@@ -630,10 +655,12 @@ async def svc_send_photo(callback: CallbackQuery, state: FSMContext, db: Databas
         return await callback.answer()
 
     caption = format_group_caption(kind, len(entries), [e["dt"] for e in entries])
-    medias = [InputMediaPhoto(media=e["file_id"]) for e in entries]
-    medias[0].caption = caption
-    msgs = await callback.bot.send_media_group(chat_id=obj.group_chat_id, media=medias)
-    first_id = msgs[0].message_id
+    first_id = await _send_photos_in_album_chunks(
+        callback.bot,
+        obj.group_chat_id,
+        entries,
+        caption,
+    )
     link = telegram_group_message_link(obj.group_chat_id, first_id)
     await _send_to_group_and_log(
         callback.bot,
@@ -722,10 +749,12 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
             await send_explaining(callback.bot, callback.message.chat.id, "Нет фото для отправки.")
             return await callback.answer()
         caption = format_text_report_caption(ReportKind.MESSAGE, [e["dt"] for e in entries])
-        medias = [InputMediaPhoto(media=e["file_id"]) for e in entries]
-        medias[0].caption = caption
-        msgs = await callback.bot.send_media_group(chat_id=obj.group_chat_id, media=medias)
-        mid = msgs[0].message_id
+        mid = await _send_photos_in_album_chunks(
+            callback.bot,
+            obj.group_chat_id,
+            entries,
+            caption,
+        )
     elif locked == "text":
         body = data.get("message_text_body")
         if not body:
