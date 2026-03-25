@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from config import BOT_TOKEN
+from core.config import BOT_TOKEN
 from db.database import Database
 from handlers import accounted, admin_ui, group_admin, private_guard
 from middlewares.db_inject import DbInjectMiddleware
@@ -24,7 +24,7 @@ async def main() -> None:
     if not BOT_TOKEN:
         raise SystemExit("Задайте BOT_TOKEN в .env")
 
-    from config import DATABASE_PATH
+    from core.config import DATABASE_PATH
 
     db = Database(DATABASE_PATH)
     await db.connect()

@@ -5,7 +5,7 @@ from aiogram.types import Message
 
 import texts_ru as T
 from db.database import Database
-from utils import is_bot_admin
+from core.utils import is_bot_admin
 
 router = Router(name="group_admin")
 

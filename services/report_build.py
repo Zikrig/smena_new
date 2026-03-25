@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List
 
-from report_types import ReportKind, emoji_for_kind, report_title
+from core.report_types import ReportKind, emoji_for_kind, report_title
 
 
 def format_group_caption(

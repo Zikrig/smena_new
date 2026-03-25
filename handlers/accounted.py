@@ -4,7 +4,7 @@ from aiogram.types import CallbackQuery
 import texts_ru as T
 from db.database import Database
 from services import sheets
-from utils import is_bot_admin, telegram_group_message_link
+from core.utils import is_bot_admin, telegram_group_message_link
 
 router = Router(name="accounted")
 

@@ -9,8 +9,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from constants import SCENARIO_TIMEOUT_MINUTES
-from keyboards import main_menu_keyboard
-from states import GuardStates
+from core.keyboards import main_menu_keyboard
+from core.states import GuardStates
 import texts_ru as T
 from services.service_menu import clear_service_menu_message
 

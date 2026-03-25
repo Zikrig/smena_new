@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+ROOT = Path(__file__).resolve().parent.parent
+
 
 def _parse_admin_ids(raw: str) -> list[int]:
     if not raw or not raw.strip():
@@ -20,7 +22,7 @@ def _parse_admin_ids(raw: str) -> list[int]:
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 DATABASE_PATH = os.getenv(
     "DATABASE_PATH",
-    str(Path(__file__).resolve().parent / "guard_bot.db"),
+    str(ROOT / "guard_bot.db"),
 )
 # Список user_id через запятую — доступ к командам в группах, «Учтено», /admin в ЛС
 ADMIN_IDS: list[int] = _parse_admin_ids(os.getenv("ADMIN_IDS", ""))
@@ -29,7 +31,7 @@ ADMIN_IDS: list[int] = _parse_admin_ids(os.getenv("ADMIN_IDS", ""))
 GOOGLE_SHEETS_SPREADSHEET_ID = os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "")
 GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv(
     "GOOGLE_SERVICE_ACCOUNT_JSON",
-    str(Path(__file__).resolve().parent / "service_account.json"),
+    str(ROOT / "service_account.json"),
 )
 
 # Часовой пояс для подписи отчётов (п.11); по умолчанию локальное время процесса.

@@ -13,8 +13,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import texts_ru as T
 from db.database import Database, ObjectRow
-from states import AdminStates
-from utils import is_bot_admin
+from core.states import AdminStates
+from core.utils import is_bot_admin
 
 router = Router(name="admin_ui")
 

@@ -20,17 +20,17 @@ from constants import (
     SOFT_PHOTO_LIMIT,
     TELEGRAM_MEDIA_GROUP_MAX,
 )
+from core.keyboards import accounted_markup, hide_inline_keyboard, main_menu_keyboard
+from core.report_types import ReportKind, report_title
+from core.states import GuardStates
+from core.utils import telegram_group_message_link
 from db.database import Database, ObjectRow
 import texts_ru as T
-from keyboards import accounted_markup, main_menu_keyboard
-from report_types import ReportKind, report_title
 from services.album_tasks import cancel_album_task, schedule_album_task
 from services.report_build import format_group_caption, format_text_report_caption
 from services.service_menu import refresh_service_menu, send_explaining
 from services.service_menu import clear_service_menu_message
 from services import sheets
-from states import GuardStates
-from utils import telegram_group_message_link
 
 router = Router(name="private_guard")
 _log = logging.getLogger(__name__)
@@ -99,6 +99,7 @@ def _base_photo_data(kind: ReportKind) -> dict:
 
 
 async def _enter_photo_scenario(message: Message, state: FSMContext, kind: ReportKind) -> None:
+    await hide_inline_keyboard(message)
     await state.clear()
     cancel_album_task(message.from_user.id)
     await state.set_state(GuardStates.photo_report)
@@ -115,6 +116,7 @@ async def _enter_photo_scenario(message: Message, state: FSMContext, kind: Repor
 
 
 async def _enter_video_scenario(message: Message, state: FSMContext, kind: ReportKind) -> None:
+    await hide_inline_keyboard(message)
     await state.clear()
     cancel_album_task(message.from_user.id)
     await state.set_state(GuardStates.video_note_report)
@@ -131,6 +133,7 @@ async def _enter_video_scenario(message: Message, state: FSMContext, kind: Repor
 
 
 async def _enter_message_scenario(message: Message, state: FSMContext) -> None:
+    await hide_inline_keyboard(message)
     await state.clear()
     cancel_album_task(message.from_user.id)
     await state.set_state(GuardStates.message_report)
@@ -155,6 +158,7 @@ async def _enter_message_scenario(message: Message, state: FSMContext) -> None:
 
 
 async def _enter_alarm_scenario(message: Message, state: FSMContext) -> None:
+    await hide_inline_keyboard(message)
     await state.clear()
     cancel_album_task(message.from_user.id)
     await state.set_state(GuardStates.alarm_report)
@@ -748,6 +752,8 @@ async def svc_send_photo(callback: CallbackQuery, state: FSMContext, db: Databas
         )
         return await callback.answer()
 
+    await callback.answer()
+
     caption = format_group_caption(kind, len(entries), [e["dt"] for e in entries])
     first_id = await _send_photos_in_album_chunks(
         callback.bot,
@@ -770,7 +776,6 @@ async def svc_send_photo(callback: CallbackQuery, state: FSMContext, db: Databas
     await state.clear()
     await callback.message.answer(T.REPORT_SENT)
     await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
-    await callback.answer()
 
 
 @router.callback_query(F.data == "svc_send", GuardStates.video_note_report)
@@ -789,6 +794,8 @@ async def svc_send_video(callback: CallbackQuery, state: FSMContext, db: Databas
             T.OBJECT_PAUSED if err == "paused" else T.NOT_BOUND,
         )
         return await callback.answer()
+
+    await callback.answer()
 
     times = [datetime.now()]
     cap = format_text_report_caption(kind, times)
@@ -817,7 +824,6 @@ async def svc_send_video(callback: CallbackQuery, state: FSMContext, db: Databas
     await state.clear()
     await callback.message.answer(T.REPORT_SENT)
     await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
-    await callback.answer()
 
 
 @router.callback_query(F.data == "svc_send", GuardStates.message_report)
@@ -939,6 +945,8 @@ async def svc_send_alarm(callback: CallbackQuery, state: FSMContext, db: Databas
         )
         return await callback.answer()
 
+    await callback.answer()
+
     first_mid: Optional[int] = None
     for mid in ids:
         m = await callback.bot.copy_message(
@@ -973,4 +981,17 @@ async def svc_send_alarm(callback: CallbackQuery, state: FSMContext, db: Databas
     await state.clear()
     await callback.message.answer(T.REPORT_SENT)
     await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
-    await callback.answer()
+
+
+@router.message(StateFilter(None), F.chat.type == ChatType.PRIVATE)
+async def fallback_private(message: Message, state: FSMContext, db: Database) -> None:
+    """Любое сообщение в ЛС без состояния и без более специфичного обработчика — показать главное меню."""
+    if not message.from_user:
+        return
+    cancel_album_task(message.from_user.id)
+    _, err = await guard_access(db, message.from_user.id)
+    if err == "not_bound":
+        return await message.answer(T.NOT_BOUND)
+    if err == "paused":
+        return await message.answer(T.OBJECT_PAUSED)
+    await message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())

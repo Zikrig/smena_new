@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from config import GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_SHEETS_SPREADSHEET_ID
+from core.config import GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_SHEETS_SPREADSHEET_ID
 
 logger = logging.getLogger(__name__)
 

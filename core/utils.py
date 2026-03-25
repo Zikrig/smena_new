@@ -1,6 +1,4 @@
-from aiogram import Bot
-
-from config import ADMIN_IDS
+from core.config import ADMIN_IDS
 
 
 def is_bot_admin(user_id: int) -> bool:

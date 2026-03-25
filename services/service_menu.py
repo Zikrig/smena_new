@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 
 import texts_ru as T
 from constants import HARD_PHOTO_LIMIT
-from keyboards import service_menu_markup
+from core.keyboards import service_menu_markup
 
 
 async def send_explaining(bot: Bot, chat_id: int, text: str) -> None:

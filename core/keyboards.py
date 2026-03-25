@@ -1,7 +1,15 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import texts_ru as T
+
+
+async def hide_inline_keyboard(message: Message) -> None:
+    """Убирает inline-клавиатуру с сообщения бота (например главное меню)."""
+    try:
+        await message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
