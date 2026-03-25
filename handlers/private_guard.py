@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, List, Optional
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.enums import ChatType
 from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -13,6 +14,7 @@ from aiogram.types import CallbackQuery, InputMediaPhoto, Message
 from constants import (
     ALBUM_DEBOUNCE_SECONDS,
     HARD_PHOTO_LIMIT,
+    SECONDS_BETWEEN_MEDIA_GROUPS,
     SOFT_PHOTO_LIMIT,
     TELEGRAM_MEDIA_GROUP_MAX,
 )
@@ -600,6 +602,15 @@ async def svc_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
+async def _send_media_group_with_flood_retry(bot, chat_id: int, medias: list) -> List[Message]:
+    """SendMediaGroup в одном чате подряд даёт flood control — ждём retry_after при 429."""
+    while True:
+        try:
+            return await bot.send_media_group(chat_id=chat_id, media=medias)
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(float(e.retry_after))
+
+
 async def _send_photos_in_album_chunks(
     bot,
     chat_id: int,
@@ -609,11 +620,13 @@ async def _send_photos_in_album_chunks(
     """Telegram: не более TELEGRAM_MEDIA_GROUP_MAX фото в одном альбоме; при большем числе — несколько альбомов."""
     first_message_id: Optional[int] = None
     for start in range(0, len(entries), TELEGRAM_MEDIA_GROUP_MAX):
+        if start > 0:
+            await asyncio.sleep(SECONDS_BETWEEN_MEDIA_GROUPS)
         chunk = entries[start : start + TELEGRAM_MEDIA_GROUP_MAX]
         medias = [InputMediaPhoto(media=e["file_id"]) for e in chunk]
         if start == 0:
             medias[0].caption = caption_on_first
-        msgs = await bot.send_media_group(chat_id=chat_id, media=medias)
+        msgs = await _send_media_group_with_flood_retry(bot, chat_id, medias)
         if first_message_id is None:
             first_message_id = msgs[0].message_id
     assert first_message_id is not None
