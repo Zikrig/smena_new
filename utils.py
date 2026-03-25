@@ -1,10 +1,10 @@
 from aiogram import Bot
-from aiogram.enums import ChatMemberStatus
+
+from config import ADMIN_IDS
 
 
-async def user_is_group_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
-    m = await bot.get_chat_member(chat_id, user_id)
-    return m.status in (ChatMemberStatus.CREATOR, ChatMemberStatus.ADMINISTRATOR)
+def is_bot_admin(user_id: int) -> bool:
+    return user_id in ADMIN_IDS
 
 
 def telegram_group_message_link(chat_id: int, message_id: int) -> str:

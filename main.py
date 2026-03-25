@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
 
 from config import BOT_TOKEN
 from db.database import Database
-from handlers import accounted, group_admin, private_guard
+from handlers import accounted, admin_ui, group_admin, private_guard
 from middlewares.db_inject import DbInjectMiddleware
 from middlewares.scenario_timeout import ScenarioTimeoutMiddleware
 
@@ -42,6 +42,7 @@ async def main() -> None:
 
     dp.include_router(group_admin.router)
     dp.include_router(accounted.router)
+    dp.include_router(admin_ui.router)
     dp.include_router(private_guard.router)
 
     try:

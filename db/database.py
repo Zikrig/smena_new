@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS objects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     group_chat_id INTEGER NOT NULL UNIQUE,
-    sheet_title TEXT NOT NULL
+    sheet_title TEXT NOT NULL,
+    is_paused INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS guards (
@@ -42,6 +43,7 @@ class ObjectRow:
     name: str
     group_chat_id: int
     sheet_title: str
+    is_paused: bool
 
 
 class Database:
@@ -53,6 +55,13 @@ class Database:
         self._db.row_factory = aiosqlite.Row
         await self._db.executescript(SCHEMA)
         await self._db.commit()
+        try:
+            await self._db.execute(
+                "ALTER TABLE objects ADD COLUMN is_paused INTEGER NOT NULL DEFAULT 0"
+            )
+            await self._db.commit()
+        except aiosqlite.OperationalError:
+            pass
 
     async def close(self) -> None:
         await self._db.close()
@@ -62,12 +71,21 @@ class Database:
         safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in name)[:80]
         return f"{safe or 'object'}_{abs(chat_id) % 10_000_000}"
 
+    def _row_to_object(self, row) -> ObjectRow:
+        return ObjectRow(
+            id=int(row["id"]),
+            name=row["name"],
+            group_chat_id=int(row["group_chat_id"]),
+            sheet_title=row["sheet_title"],
+            is_paused=bool(row["is_paused"]),
+        )
+
     async def upsert_object(self, name: str, group_chat_id: int) -> ObjectRow:
         sheet_title = self._slug_sheet_title(name, group_chat_id)
         await self._db.execute(
             """
-            INSERT INTO objects (name, group_chat_id, sheet_title)
-            VALUES (?, ?, ?)
+            INSERT INTO objects (name, group_chat_id, sheet_title, is_paused)
+            VALUES (?, ?, ?, 0)
             ON CONFLICT(group_chat_id) DO UPDATE SET
                 name = excluded.name,
                 sheet_title = excluded.sheet_title
@@ -76,31 +94,51 @@ class Database:
         )
         await self._db.commit()
         cur = await self._db.execute(
-            "SELECT id, name, group_chat_id, sheet_title FROM objects WHERE group_chat_id = ?",
+            "SELECT id, name, group_chat_id, sheet_title, is_paused FROM objects WHERE group_chat_id = ?",
             (group_chat_id,),
         )
         row = await cur.fetchone()
-        return ObjectRow(row["id"], row["name"], row["group_chat_id"], row["sheet_title"])
+        return self._row_to_object(row)
 
     async def get_object_by_group(self, group_chat_id: int) -> Optional[ObjectRow]:
         cur = await self._db.execute(
-            "SELECT id, name, group_chat_id, sheet_title FROM objects WHERE group_chat_id = ?",
+            "SELECT id, name, group_chat_id, sheet_title, is_paused FROM objects WHERE group_chat_id = ?",
             (group_chat_id,),
         )
         row = await cur.fetchone()
         if not row:
             return None
-        return ObjectRow(row["id"], row["name"], row["group_chat_id"], row["sheet_title"])
+        return self._row_to_object(row)
 
     async def get_object_by_id(self, object_id: int) -> Optional[ObjectRow]:
         cur = await self._db.execute(
-            "SELECT id, name, group_chat_id, sheet_title FROM objects WHERE id = ?",
+            "SELECT id, name, group_chat_id, sheet_title, is_paused FROM objects WHERE id = ?",
             (object_id,),
         )
         row = await cur.fetchone()
         if not row:
             return None
-        return ObjectRow(row["id"], row["name"], row["group_chat_id"], row["sheet_title"])
+        return self._row_to_object(row)
+
+    async def list_objects(self) -> list[ObjectRow]:
+        cur = await self._db.execute(
+            "SELECT id, name, group_chat_id, sheet_title, is_paused FROM objects ORDER BY id"
+        )
+        rows = await cur.fetchall()
+        return [self._row_to_object(r) for r in rows]
+
+    async def set_object_paused(self, object_id: int, paused: bool) -> None:
+        await self._db.execute(
+            "UPDATE objects SET is_paused = ? WHERE id = ?",
+            (1 if paused else 0, object_id),
+        )
+        await self._db.commit()
+
+    async def delete_object(self, object_id: int) -> None:
+        await self._db.execute("DELETE FROM bind_tokens WHERE object_id = ?", (object_id,))
+        await self._db.execute("DELETE FROM guards WHERE object_id = ?", (object_id,))
+        await self._db.execute("DELETE FROM objects WHERE id = ?", (object_id,))
+        await self._db.commit()
 
     async def get_guard_object_id(self, user_id: int) -> Optional[int]:
         cur = await self._db.execute(
@@ -109,6 +147,24 @@ class Database:
         )
         row = await cur.fetchone()
         return int(row["object_id"]) if row else None
+
+    async def list_guards(self) -> list[tuple[int, int, str]]:
+        """user_id, object_id, object_name"""
+        cur = await self._db.execute(
+            """
+            SELECT g.user_id, g.object_id, o.name
+            FROM guards g
+            JOIN objects o ON o.id = g.object_id
+            ORDER BY g.user_id
+            """
+        )
+        rows = await cur.fetchall()
+        return [(int(r[0]), int(r[1]), str(r[2])) for r in rows]
+
+    async def remove_guard(self, user_id: int) -> bool:
+        cur = await self._db.execute("DELETE FROM guards WHERE user_id = ?", (user_id,))
+        await self._db.commit()
+        return cur.rowcount > 0
 
     async def bind_guard(self, user_id: int, object_id: int) -> None:
         await self._db.execute(
@@ -154,6 +210,23 @@ class Database:
         row = await cur.fetchone()
         return int(row[0])
 
+    async def create_group_post_ref_pending(self, group_chat_id: int) -> int:
+        await self._db.execute(
+            "INSERT INTO group_post_refs (group_chat_id, message_id) VALUES (?, 0)",
+            (group_chat_id,),
+        )
+        await self._db.commit()
+        cur = await self._db.execute("SELECT last_insert_rowid()")
+        row = await cur.fetchone()
+        return int(row[0])
+
+    async def finalize_group_post_ref(self, ref_id: int, message_id: int) -> None:
+        await self._db.execute(
+            "UPDATE group_post_refs SET message_id = ? WHERE id = ?",
+            (message_id, ref_id),
+        )
+        await self._db.commit()
+
     async def get_group_post_ref(self, ref_id: int) -> Optional[tuple[int, int]]:
         cur = await self._db.execute(
             "SELECT group_chat_id, message_id FROM group_post_refs WHERE id = ?",
@@ -162,4 +235,7 @@ class Database:
         row = await cur.fetchone()
         if not row:
             return None
-        return int(row["group_chat_id"]), int(row["message_id"])
+        mid = int(row["message_id"])
+        if mid == 0:
+            return None
+        return int(row["group_chat_id"]), mid

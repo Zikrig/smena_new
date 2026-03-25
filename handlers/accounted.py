@@ -4,7 +4,7 @@ from aiogram.types import CallbackQuery
 import texts_ru as T
 from db.database import Database
 from services import sheets
-from utils import telegram_group_message_link, user_is_group_admin
+from utils import is_bot_admin, telegram_group_message_link
 
 router = Router(name="accounted")
 
@@ -23,8 +23,8 @@ async def accounted_click(callback: CallbackQuery, db: Database) -> None:
     group_chat_id, message_id = pair
     if callback.message.chat.id != group_chat_id:
         return await callback.answer()
-    if not await user_is_group_admin(callback.bot, group_chat_id, callback.from_user.id):
-        return await callback.answer(T.ADMIN_ONLY, show_alert=True)
+    if not is_bot_admin(callback.from_user.id):
+        return await callback.answer(T.BOT_ADMIN_ONLY, show_alert=True)
     try:
         await callback.bot.unpin_chat_message(group_chat_id, message_id)
     except Exception:

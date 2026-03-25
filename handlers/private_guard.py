@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime
 from typing import Any, List, Optional
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramRetryAfter
+from aiogram.methods import SendMediaGroup
 from aiogram.enums import ChatType
 from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -18,7 +20,7 @@ from constants import (
     SOFT_PHOTO_LIMIT,
     TELEGRAM_MEDIA_GROUP_MAX,
 )
-from db.database import Database
+from db.database import Database, ObjectRow
 import texts_ru as T
 from keyboards import accounted_markup, main_menu_keyboard
 from report_types import ReportKind, report_title
@@ -31,13 +33,29 @@ from states import GuardStates
 from utils import telegram_group_message_link
 
 router = Router(name="private_guard")
+_log = logging.getLogger(__name__)
 
 
-async def _object_for_guard(db: Database, user_id: int):
+async def _pin_report_message(bot, chat_id: int, message_id: int) -> None:
+    try:
+        await bot.pin_chat_message(chat_id, message_id, disable_notification=True)
+    except Exception as e:
+        _log.warning("Не удалось закрепить сообщение %s в чате %s: %s", message_id, chat_id, e)
+
+
+async def guard_access(
+    db: Database, user_id: int
+) -> tuple[Optional[ObjectRow], Optional[str]]:
+    """(объект, None) или (None, not_bound|paused)."""
     oid = await db.get_guard_object_id(user_id)
     if not oid:
-        return None
-    return await db.get_object_by_id(oid)
+        return None, "not_bound"
+    obj = await db.get_object_by_id(oid)
+    if not obj:
+        return None, "not_bound"
+    if obj.is_paused:
+        return None, "paused"
+    return obj, None
 
 
 async def _start_bind(message: Message, state: FSMContext, token: str, db: Database) -> None:
@@ -62,9 +80,11 @@ async def cmd_start(message: Message, state: FSMContext, db: Database) -> None:
     arg = parts[1].strip() if len(parts) > 1 else ""
     if arg.startswith("bind_"):
         return await _start_bind(message, state, arg.replace("bind_", "", 1), db)
-    oid = await db.get_guard_object_id(message.from_user.id)
-    if not oid:
+    _, err = await guard_access(db, message.from_user.id)
+    if err == "not_bound":
         return await message.answer(T.NOT_BOUND)
+    if err == "paused":
+        return await message.answer(T.OBJECT_PAUSED)
     await message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
 
 
@@ -151,50 +171,71 @@ async def _enter_alarm_scenario(message: Message, state: FSMContext) -> None:
 
 @router.message(F.text == T.BTN_START_SHIFT, StateFilter(None), F.chat.type == ChatType.PRIVATE)
 async def menu_start_shift(message: Message, state: FSMContext, db: Database) -> None:
-    if not await db.get_guard_object_id(message.from_user.id):
+    _, err = await guard_access(db, message.from_user.id)
+    if err == "not_bound":
         return await message.answer(T.NOT_BOUND)
+    if err == "paused":
+        return await message.answer(T.OBJECT_PAUSED)
     await _enter_video_scenario(message, state, ReportKind.START_SHIFT)
 
 
 @router.message(F.text == T.BTN_POST_CHECK, StateFilter(None), F.chat.type == ChatType.PRIVATE)
 async def menu_post_check(message: Message, state: FSMContext, db: Database) -> None:
-    if not await db.get_guard_object_id(message.from_user.id):
+    _, err = await guard_access(db, message.from_user.id)
+    if err == "not_bound":
         return await message.answer(T.NOT_BOUND)
+    if err == "paused":
+        return await message.answer(T.OBJECT_PAUSED)
     await _enter_video_scenario(message, state, ReportKind.POST_CHECK)
 
 
 @router.message(F.text == T.BTN_HANDOVER, StateFilter(None), F.chat.type == ChatType.PRIVATE)
 async def menu_handover(message: Message, state: FSMContext, db: Database) -> None:
-    if not await db.get_guard_object_id(message.from_user.id):
+    _, err = await guard_access(db, message.from_user.id)
+    if err == "not_bound":
         return await message.answer(T.NOT_BOUND)
+    if err == "paused":
+        return await message.answer(T.OBJECT_PAUSED)
     await _enter_photo_scenario(message, state, ReportKind.HANDOVER)
 
 
 @router.message(F.text == T.BTN_PATROL, StateFilter(None), F.chat.type == ChatType.PRIVATE)
 async def menu_patrol(message: Message, state: FSMContext, db: Database) -> None:
-    if not await db.get_guard_object_id(message.from_user.id):
+    _, err = await guard_access(db, message.from_user.id)
+    if err == "not_bound":
         return await message.answer(T.NOT_BOUND)
+    if err == "paused":
+        return await message.answer(T.OBJECT_PAUSED)
     await _enter_photo_scenario(message, state, ReportKind.PATROL)
 
 
 @router.message(F.text == T.BTN_INSPECTION, StateFilter(None), F.chat.type == ChatType.PRIVATE)
 async def menu_inspection(message: Message, state: FSMContext, db: Database) -> None:
-    if not await db.get_guard_object_id(message.from_user.id):
+    _, err = await guard_access(db, message.from_user.id)
+    if err == "not_bound":
         return await message.answer(T.NOT_BOUND)
+    if err == "paused":
+        return await message.answer(T.OBJECT_PAUSED)
     await _enter_photo_scenario(message, state, ReportKind.INSPECTION)
 
 
 @router.message(F.text == T.BTN_MESSAGE, StateFilter(None), F.chat.type == ChatType.PRIVATE)
 async def menu_message(message: Message, state: FSMContext, db: Database) -> None:
-    if not await db.get_guard_object_id(message.from_user.id):
+    _, err = await guard_access(db, message.from_user.id)
+    if err == "not_bound":
         return await message.answer(T.NOT_BOUND)
+    if err == "paused":
+        return await message.answer(T.OBJECT_PAUSED)
     await _enter_message_scenario(message, state)
 
 
 @router.message(F.text == T.BTN_ALARM, StateFilter(None), F.chat.type == ChatType.PRIVATE)
 async def menu_alarm(message: Message, state: FSMContext, db: Database) -> None:
-    if not await db.get_guard_object_id(message.from_user.id):
+    _, err = await guard_access(db, message.from_user.id)
+    if err == "not_bound":
         return await message.answer(T.NOT_BOUND)
+    if err == "paused":
+        return await message.answer(T.OBJECT_PAUSED)
     await _enter_alarm_scenario(message, state)
 
 
@@ -602,11 +643,37 @@ async def svc_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-async def _send_media_group_with_flood_retry(bot, chat_id: int, medias: list) -> List[Message]:
-    """SendMediaGroup в одном чате подряд даёт flood control — ждём retry_after при 429."""
+async def _send_media_group_with_flood_retry(
+    bot,
+    chat_id: int,
+    medias: list,
+    reply_markup: Optional[Any] = None,
+) -> List[Message]:
+    """SendMediaGroup + reply_markup на первое сообщение альбома (Bot API); flood — retry_after."""
     while True:
         try:
-            return await bot.send_media_group(chat_id=chat_id, media=medias)
+            call = SendMediaGroup(chat_id=chat_id, media=medias, reply_markup=reply_markup)
+            return await bot(call)
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(float(e.retry_after))
+
+
+async def _send_photo_with_flood_retry(
+    bot,
+    chat_id: int,
+    file_id: str,
+    *,
+    caption: Optional[str] = None,
+    reply_markup: Optional[Any] = None,
+) -> Message:
+    while True:
+        try:
+            return await bot.send_photo(
+                chat_id=chat_id,
+                photo=file_id,
+                caption=caption,
+                reply_markup=reply_markup,
+            )
         except TelegramRetryAfter as e:
             await asyncio.sleep(float(e.retry_after))
 
@@ -616,17 +683,30 @@ async def _send_photos_in_album_chunks(
     chat_id: int,
     entries: List[dict],
     caption_on_first: str,
+    reply_markup_first: Optional[Any] = None,
 ) -> int:
-    """Telegram: не более TELEGRAM_MEDIA_GROUP_MAX фото в одном альбоме; при большем числе — несколько альбомов."""
+    """Не более TELEGRAM_MEDIA_GROUP_MAX фото в альбоме; 1 фото — send_photo (альбом от 2 элементов)."""
     first_message_id: Optional[int] = None
     for start in range(0, len(entries), TELEGRAM_MEDIA_GROUP_MAX):
         if start > 0:
             await asyncio.sleep(SECONDS_BETWEEN_MEDIA_GROUPS)
         chunk = entries[start : start + TELEGRAM_MEDIA_GROUP_MAX]
-        medias = [InputMediaPhoto(media=e["file_id"]) for e in chunk]
-        if start == 0:
-            medias[0].caption = caption_on_first
-        msgs = await _send_media_group_with_flood_retry(bot, chat_id, medias)
+        rm = reply_markup_first if start == 0 else None
+        if len(chunk) == 1:
+            cap = caption_on_first if start == 0 else None
+            msg = await _send_photo_with_flood_retry(
+                bot,
+                chat_id,
+                chunk[0]["file_id"],
+                caption=cap,
+                reply_markup=rm,
+            )
+            msgs = [msg]
+        else:
+            medias = [InputMediaPhoto(media=e["file_id"]) for e in chunk]
+            if start == 0:
+                medias[0].caption = caption_on_first
+            msgs = await _send_media_group_with_flood_retry(bot, chat_id, medias, reply_markup=rm)
         if first_message_id is None:
             first_message_id = msgs[0].message_id
     assert first_message_id is not None
@@ -662,9 +742,13 @@ async def svc_send_photo(callback: CallbackQuery, state: FSMContext, db: Databas
         return await callback.answer()
 
     kind = ReportKind(data["report_kind"])
-    obj = await _object_for_guard(db, uid)
-    if not obj:
-        await send_explaining(callback.bot, callback.message.chat.id, T.NOT_BOUND)
+    obj, err = await guard_access(db, uid)
+    if err:
+        await send_explaining(
+            callback.bot,
+            callback.message.chat.id,
+            T.OBJECT_PAUSED if err == "paused" else T.NOT_BOUND,
+        )
         return await callback.answer()
 
     caption = format_group_caption(kind, len(entries), [e["dt"] for e in entries])
@@ -700,9 +784,13 @@ async def svc_send_video(callback: CallbackQuery, state: FSMContext, db: Databas
         await send_explaining(callback.bot, callback.message.chat.id, "Нет видеокружка для отправки.")
         return await callback.answer()
     kind = ReportKind(data["report_kind"])
-    obj = await _object_for_guard(db, callback.from_user.id)
-    if not obj:
-        await send_explaining(callback.bot, callback.message.chat.id, T.NOT_BOUND)
+    obj, err = await guard_access(db, callback.from_user.id)
+    if err:
+        await send_explaining(
+            callback.bot,
+            callback.message.chat.id,
+            T.OBJECT_PAUSED if err == "paused" else T.NOT_BOUND,
+        )
         return await callback.answer()
 
     times = [datetime.now()]
@@ -751,9 +839,13 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
         data = await state.get_data()
 
     locked = data.get("msg_locked_kind")
-    obj = await _object_for_guard(db, uid)
-    if not obj:
-        await send_explaining(callback.bot, callback.message.chat.id, T.NOT_BOUND)
+    obj, err = await guard_access(db, uid)
+    if err:
+        await send_explaining(
+            callback.bot,
+            callback.message.chat.id,
+            T.OBJECT_PAUSED if err == "paused" else T.NOT_BOUND,
+        )
         return await callback.answer()
 
     if locked == "photo":
@@ -761,31 +853,48 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
         if not entries:
             await send_explaining(callback.bot, callback.message.chat.id, "Нет фото для отправки.")
             return await callback.answer()
+        ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
+        kb = accounted_markup(f"a:{ref_id}")
         caption = format_text_report_caption(ReportKind.MESSAGE, [e["dt"] for e in entries])
         mid = await _send_photos_in_album_chunks(
             callback.bot,
             obj.group_chat_id,
             entries,
             caption,
+            reply_markup_first=kb,
         )
     elif locked == "text":
         body = data.get("message_text_body")
         if not body:
             await send_explaining(callback.bot, callback.message.chat.id, "Нет текста для отправки.")
             return await callback.answer()
+        ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
+        kb = accounted_markup(f"a:{ref_id}")
         header = format_text_report_caption(ReportKind.MESSAGE, [datetime.now()])
-        msg = await callback.bot.send_message(obj.group_chat_id, f"{header}\n\n{body}")
+        msg = await callback.bot.send_message(
+            obj.group_chat_id,
+            f"{header}\n\n{body}",
+            reply_markup=kb,
+        )
         mid = msg.message_id
     elif locked in ("video", "voice"):
         smid = data.get("single_msg_id")
         if not smid:
             await send_explaining(callback.bot, callback.message.chat.id, "Нет содержимого для отправки.")
             return await callback.answer()
-        msg = await callback.bot.copy_message(
-            chat_id=obj.group_chat_id,
-            from_chat_id=uid,
-            message_id=smid,
-        )
+        ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
+        kb = accounted_markup(f"a:{ref_id}")
+        while True:
+            try:
+                msg = await callback.bot.copy_message(
+                    chat_id=obj.group_chat_id,
+                    from_chat_id=uid,
+                    message_id=smid,
+                    reply_markup=kb,
+                )
+                break
+            except TelegramRetryAfter as e:
+                await asyncio.sleep(float(e.retry_after))
         mid = msg.message_id
         extra = format_text_report_caption(ReportKind.MESSAGE, [datetime.now()])
         try:
@@ -796,18 +905,9 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
         await send_explaining(callback.bot, callback.message.chat.id, "Сначала отправьте содержимое отчёта.")
         return await callback.answer()
 
+    await db.finalize_group_post_ref(ref_id, mid)
     link = telegram_group_message_link(obj.group_chat_id, mid)
-    ref_id = await db.add_group_post_ref(obj.group_chat_id, mid)
-    cb_data = f"a:{ref_id}"
-    await callback.bot.edit_message_reply_markup(
-        chat_id=obj.group_chat_id,
-        message_id=mid,
-        reply_markup=accounted_markup(cb_data),
-    )
-    try:
-        await callback.bot.pin_chat_message(obj.group_chat_id, mid, disable_notification=True)
-    except Exception:
-        pass
+    await _pin_report_message(callback.bot, obj.group_chat_id, mid)
 
     await _send_to_group_and_log(
         callback.bot,
@@ -833,9 +933,13 @@ async def svc_send_alarm(callback: CallbackQuery, state: FSMContext, db: Databas
     if not ids:
         await send_explaining(callback.bot, callback.message.chat.id, "Нет сообщений для тревоги.")
         return await callback.answer()
-    obj = await _object_for_guard(db, callback.from_user.id)
-    if not obj:
-        await send_explaining(callback.bot, callback.message.chat.id, T.NOT_BOUND)
+    obj, err = await guard_access(db, callback.from_user.id)
+    if err:
+        await send_explaining(
+            callback.bot,
+            callback.message.chat.id,
+            T.OBJECT_PAUSED if err == "paused" else T.NOT_BOUND,
+        )
         return await callback.answer()
 
     first_mid: Optional[int] = None
