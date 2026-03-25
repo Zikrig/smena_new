@@ -672,10 +672,11 @@ async def svc_send_video(callback: CallbackQuery, state: FSMContext, db: Databas
         from_chat_id=callback.from_user.id,
         message_id=ids[0],
     )
-    await callback.bot.edit_message_caption(
-        chat_id=obj.group_chat_id,
-        message_id=msg.message_id,
-        caption=cap,
+    # У video_note нет caption в API — текст отчёта отдельным сообщением (ответ на кружок).
+    await callback.bot.send_message(
+        obj.group_chat_id,
+        cap,
+        reply_to_message_id=msg.message_id,
     )
     link = telegram_group_message_link(obj.group_chat_id, msg.message_id)
     await _send_to_group_and_log(
