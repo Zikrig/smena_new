@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from aiogram import F, Router
-from aiogram.enums import ChatType
+from aiogram.enums import ChatType, ParseMode
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
@@ -303,6 +303,14 @@ async def msg_guard_id(message: Message, state: FSMContext, db: Database) -> Non
 async def admin_cancel(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer("Отменено.", reply_markup=_main_kb().as_markup())
+
+
+@router.message(Command("info"), StateFilter(AdminStates))
+async def admin_cmd_info(message: Message) -> None:
+    """Выше обработчиков с F.text, чтобы /info не считался названием объекта или id."""
+    if not message.from_user or not is_bot_admin(message.from_user.id):
+        return
+    await message.answer(T.ADMIN_COMMANDS_LIST, parse_mode=ParseMode.HTML)
 
 
 @router.callback_query(F.data == "adm:ng")
