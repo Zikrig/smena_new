@@ -114,6 +114,12 @@ async def cmd_admin(message: Message, state: FSMContext) -> None:
     )
 
 
+@router.message(Command("info"), F.chat.type == ChatType.PRIVATE)
+async def cmd_info_private(message: Message) -> None:
+    """Справка по командам; в этом роутере (до private_guard), чтобы /info в ЛС не терялся."""
+    await message.answer(T.ADMIN_COMMANDS_LIST, parse_mode=ParseMode.HTML)
+
+
 @router.callback_query(F.data == "adm:main")
 async def cb_main(callback: CallbackQuery, state: FSMContext) -> None:
     if not callback.from_user or not is_bot_admin(callback.from_user.id):
@@ -303,14 +309,6 @@ async def msg_guard_id(message: Message, state: FSMContext, db: Database) -> Non
 async def admin_cancel(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer("Отменено.", reply_markup=_main_kb().as_markup())
-
-
-@router.message(Command("info"), StateFilter(AdminStates))
-async def admin_cmd_info(message: Message) -> None:
-    """Выше обработчиков с F.text, чтобы /info не считался названием объекта или id."""
-    if not message.from_user or not is_bot_admin(message.from_user.id):
-        return
-    await message.answer(T.ADMIN_COMMANDS_LIST, parse_mode=ParseMode.HTML)
 
 
 @router.callback_query(F.data == "adm:ng")

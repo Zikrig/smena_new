@@ -8,8 +8,8 @@ from typing import Any, List, Optional
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.methods import SendMediaGroup
-from aiogram.enums import ChatType, ParseMode
-from aiogram.filters import Command, CommandStart, StateFilter
+from aiogram.enums import ChatType
+from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InputMediaPhoto, Message
 
@@ -100,12 +100,6 @@ async def cmd_start(message: Message, state: FSMContext, db: Database) -> None:
     if err == "paused":
         return await message.answer(T.OBJECT_PAUSED)
     await message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
-
-
-@router.message(Command("info"), F.chat.type == ChatType.PRIVATE)
-async def cmd_info_private(message: Message) -> None:
-    """Справка по командам в группе; объявлен до сценариев и до fallback, чтобы /info не уходил в «любой текст»."""
-    await message.answer(T.ADMIN_COMMANDS_LIST, parse_mode=ParseMode.HTML)
 
 
 def _base_photo_data(kind: ReportKind) -> dict:
