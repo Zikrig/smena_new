@@ -1,19 +1,25 @@
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import texts_ru as T
 
 
-def main_menu_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=T.BTN_START_SHIFT), KeyboardButton(text=T.BTN_HANDOVER)],
-            [KeyboardButton(text=T.BTN_PATROL), KeyboardButton(text=T.BTN_INSPECTION)],
-            [KeyboardButton(text=T.BTN_POST_CHECK), KeyboardButton(text=T.BTN_MESSAGE)],
-            [KeyboardButton(text=T.BTN_ALARM)],
-        ],
-        resize_keyboard=True,
+def main_menu_keyboard() -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.row(
+        InlineKeyboardButton(text=T.BTN_START_SHIFT, callback_data="menu:shift"),
+        InlineKeyboardButton(text=T.BTN_HANDOVER, callback_data="menu:handover"),
     )
+    b.row(
+        InlineKeyboardButton(text=T.BTN_PATROL, callback_data="menu:patrol"),
+        InlineKeyboardButton(text=T.BTN_INSPECTION, callback_data="menu:inspection"),
+    )
+    b.row(
+        InlineKeyboardButton(text=T.BTN_POST_CHECK, callback_data="menu:post"),
+        InlineKeyboardButton(text=T.BTN_MESSAGE, callback_data="menu:message"),
+    )
+    b.row(InlineKeyboardButton(text=T.BTN_ALARM, callback_data="menu:alarm"))
+    return b.as_markup()
 
 
 def service_menu_inline(*, show_photo_counter: bool, photo_count: int) -> InlineKeyboardBuilder:

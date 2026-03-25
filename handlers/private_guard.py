@@ -169,74 +169,71 @@ async def _enter_alarm_scenario(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.message(F.text == T.BTN_START_SHIFT, StateFilter(None), F.chat.type == ChatType.PRIVATE)
-async def menu_start_shift(message: Message, state: FSMContext, db: Database) -> None:
-    _, err = await guard_access(db, message.from_user.id)
+async def _main_menu_from_callback(
+    callback: CallbackQuery, state: FSMContext, db: Database
+) -> bool:
+    """True если можно продолжить сценарий, False если ответили ошибкой."""
+    if not callback.message or callback.message.chat.type != ChatType.PRIVATE:
+        await callback.answer()
+        return False
+    await callback.answer()
+    _, err = await guard_access(db, callback.from_user.id)
     if err == "not_bound":
-        return await message.answer(T.NOT_BOUND)
+        await callback.message.answer(T.NOT_BOUND)
+        return False
     if err == "paused":
-        return await message.answer(T.OBJECT_PAUSED)
-    await _enter_video_scenario(message, state, ReportKind.START_SHIFT)
+        await callback.message.answer(T.OBJECT_PAUSED)
+        return False
+    return True
 
 
-@router.message(F.text == T.BTN_POST_CHECK, StateFilter(None), F.chat.type == ChatType.PRIVATE)
-async def menu_post_check(message: Message, state: FSMContext, db: Database) -> None:
-    _, err = await guard_access(db, message.from_user.id)
-    if err == "not_bound":
-        return await message.answer(T.NOT_BOUND)
-    if err == "paused":
-        return await message.answer(T.OBJECT_PAUSED)
-    await _enter_video_scenario(message, state, ReportKind.POST_CHECK)
+@router.callback_query(F.data == "menu:shift", StateFilter(None))
+async def menu_start_shift(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
+    if not await _main_menu_from_callback(callback, state, db):
+        return
+    await _enter_video_scenario(callback.message, state, ReportKind.START_SHIFT)
 
 
-@router.message(F.text == T.BTN_HANDOVER, StateFilter(None), F.chat.type == ChatType.PRIVATE)
-async def menu_handover(message: Message, state: FSMContext, db: Database) -> None:
-    _, err = await guard_access(db, message.from_user.id)
-    if err == "not_bound":
-        return await message.answer(T.NOT_BOUND)
-    if err == "paused":
-        return await message.answer(T.OBJECT_PAUSED)
-    await _enter_photo_scenario(message, state, ReportKind.HANDOVER)
+@router.callback_query(F.data == "menu:post", StateFilter(None))
+async def menu_post_check(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
+    if not await _main_menu_from_callback(callback, state, db):
+        return
+    await _enter_video_scenario(callback.message, state, ReportKind.POST_CHECK)
 
 
-@router.message(F.text == T.BTN_PATROL, StateFilter(None), F.chat.type == ChatType.PRIVATE)
-async def menu_patrol(message: Message, state: FSMContext, db: Database) -> None:
-    _, err = await guard_access(db, message.from_user.id)
-    if err == "not_bound":
-        return await message.answer(T.NOT_BOUND)
-    if err == "paused":
-        return await message.answer(T.OBJECT_PAUSED)
-    await _enter_photo_scenario(message, state, ReportKind.PATROL)
+@router.callback_query(F.data == "menu:handover", StateFilter(None))
+async def menu_handover(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
+    if not await _main_menu_from_callback(callback, state, db):
+        return
+    await _enter_photo_scenario(callback.message, state, ReportKind.HANDOVER)
 
 
-@router.message(F.text == T.BTN_INSPECTION, StateFilter(None), F.chat.type == ChatType.PRIVATE)
-async def menu_inspection(message: Message, state: FSMContext, db: Database) -> None:
-    _, err = await guard_access(db, message.from_user.id)
-    if err == "not_bound":
-        return await message.answer(T.NOT_BOUND)
-    if err == "paused":
-        return await message.answer(T.OBJECT_PAUSED)
-    await _enter_photo_scenario(message, state, ReportKind.INSPECTION)
+@router.callback_query(F.data == "menu:patrol", StateFilter(None))
+async def menu_patrol(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
+    if not await _main_menu_from_callback(callback, state, db):
+        return
+    await _enter_photo_scenario(callback.message, state, ReportKind.PATROL)
 
 
-@router.message(F.text == T.BTN_MESSAGE, StateFilter(None), F.chat.type == ChatType.PRIVATE)
-async def menu_message(message: Message, state: FSMContext, db: Database) -> None:
-    _, err = await guard_access(db, message.from_user.id)
-    if err == "not_bound":
-        return await message.answer(T.NOT_BOUND)
-    if err == "paused":
-        return await message.answer(T.OBJECT_PAUSED)
-    await _enter_message_scenario(message, state)
+@router.callback_query(F.data == "menu:inspection", StateFilter(None))
+async def menu_inspection(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
+    if not await _main_menu_from_callback(callback, state, db):
+        return
+    await _enter_photo_scenario(callback.message, state, ReportKind.INSPECTION)
 
 
-@router.message(F.text == T.BTN_ALARM, StateFilter(None), F.chat.type == ChatType.PRIVATE)
-async def menu_alarm(message: Message, state: FSMContext, db: Database) -> None:
-    _, err = await guard_access(db, message.from_user.id)
-    if err == "not_bound":
-        return await message.answer(T.NOT_BOUND)
-    if err == "paused":
-        return await message.answer(T.OBJECT_PAUSED)
-    await _enter_alarm_scenario(message, state)
+@router.callback_query(F.data == "menu:message", StateFilter(None))
+async def menu_message(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
+    if not await _main_menu_from_callback(callback, state, db):
+        return
+    await _enter_message_scenario(callback.message, state)
+
+
+@router.callback_query(F.data == "menu:alarm", StateFilter(None))
+async def menu_alarm(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
+    if not await _main_menu_from_callback(callback, state, db):
+        return
+    await _enter_alarm_scenario(callback.message, state)
 
 
 async def _flush_album_to_entries(
@@ -635,12 +632,12 @@ async def alarm_collect(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "svc_cancel", StateFilter(GuardStates))
 async def svc_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
     cancel_album_task(callback.from_user.id)
     await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
     await state.clear()
     await callback.message.answer(T.ACTION_CANCELLED)
     await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
-    await callback.answer()
 
 
 async def _send_media_group_with_flood_retry(
