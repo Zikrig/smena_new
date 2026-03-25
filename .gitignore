@@ -1,0 +1,12 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.db
+data/
+service_account.json
+*.log
+.idea/
+.vscode/

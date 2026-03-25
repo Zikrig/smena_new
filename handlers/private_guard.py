@@ -1,0 +1,832 @@
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime
+from typing import Any, List, Optional
+
+from aiogram import F, Router
+from aiogram.enums import ChatType
+from aiogram.filters import CommandStart, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, InputMediaPhoto, Message
+
+from constants import ALBUM_DEBOUNCE_SECONDS, HARD_PHOTO_LIMIT, SOFT_PHOTO_LIMIT
+from db.database import Database
+import texts_ru as T
+from keyboards import accounted_markup, main_menu_keyboard
+from report_types import ReportKind, report_title
+from services.album_tasks import cancel_album_task, schedule_album_task
+from services.report_build import format_group_caption, format_text_report_caption
+from services.service_menu import refresh_service_menu, send_explaining
+from services.service_menu import clear_service_menu_message
+from services import sheets
+from states import GuardStates
+from utils import telegram_group_message_link
+
+router = Router(name="private_guard")
+
+
+async def _object_for_guard(db: Database, user_id: int):
+    oid = await db.get_guard_object_id(user_id)
+    if not oid:
+        return None
+    return await db.get_object_by_id(oid)
+
+
+async def _start_bind(message: Message, state: FSMContext, token: str, db: Database) -> None:
+    object_id = await db.consume_bind_token(token)
+    if not object_id or not message.from_user:
+        return await message.answer(T.BIND_INVALID)
+    if await db.get_guard_object_id(message.from_user.id):
+        return await message.answer(T.ALREADY_BOUND)
+    await db.bind_guard(message.from_user.id, object_id)
+    obj = await db.get_object_by_id(object_id)
+    await message.answer(T.BIND_OK.format(name=obj.name if obj else "?"))
+    await message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+
+
+@router.message(CommandStart())
+async def cmd_start(message: Message, state: FSMContext, db: Database) -> None:
+    await state.clear()
+    if not message.from_user:
+        return
+    cancel_album_task(message.from_user.id)
+    parts = (message.text or "").split(maxsplit=1)
+    arg = parts[1].strip() if len(parts) > 1 else ""
+    if arg.startswith("bind_"):
+        return await _start_bind(message, state, arg.replace("bind_", "", 1), db)
+    oid = await db.get_guard_object_id(message.from_user.id)
+    if not oid:
+        return await message.answer(T.NOT_BOUND)
+    await message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+
+
+def _base_photo_data(kind: ReportKind) -> dict:
+    return {
+        "report_kind": kind.value,
+        "photo_entries": [],
+        "album_buffer": [],
+        "album_group_id": None,
+        "soft_warned": False,
+    }
+
+
+async def _enter_photo_scenario(message: Message, state: FSMContext, kind: ReportKind) -> None:
+    await state.clear()
+    cancel_album_task(message.from_user.id)
+    await state.set_state(GuardStates.photo_report)
+    await state.update_data(**_base_photo_data(kind))
+    title = report_title(kind)
+    await message.answer(T.REPORT_STARTED.format(report_title=title))
+    await refresh_service_menu(
+        message.bot,
+        message.chat.id,
+        state,
+        show_photo_counter=True,
+        photo_count=0,
+    )
+
+
+async def _enter_video_scenario(message: Message, state: FSMContext, kind: ReportKind) -> None:
+    await state.clear()
+    cancel_album_task(message.from_user.id)
+    await state.set_state(GuardStates.video_note_report)
+    await state.update_data(report_kind=kind.value, video_msg_ids=[])
+    title = report_title(kind)
+    await message.answer(T.REPORT_STARTED.format(report_title=title))
+    await refresh_service_menu(
+        message.bot,
+        message.chat.id,
+        state,
+        show_photo_counter=False,
+        photo_count=0,
+    )
+
+
+async def _enter_message_scenario(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    cancel_album_task(message.from_user.id)
+    await state.set_state(GuardStates.message_report)
+    await state.update_data(
+        report_kind=ReportKind.MESSAGE.value,
+        msg_locked_kind=None,
+        photo_entries=[],
+        album_buffer=[],
+        album_group_id=None,
+        single_msg_id=None,
+        message_text_body=None,
+    )
+    await message.answer(T.REPORT_STARTED.format(report_title=report_title(ReportKind.MESSAGE)))
+    await message.answer(T.MESSAGE_SCENARIO_HINT)
+    await refresh_service_menu(
+        message.bot,
+        message.chat.id,
+        state,
+        show_photo_counter=False,
+        photo_count=0,
+    )
+
+
+async def _enter_alarm_scenario(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    cancel_album_task(message.from_user.id)
+    await state.set_state(GuardStates.alarm_report)
+    await state.update_data(report_kind=ReportKind.ALARM.value, alarm_msg_ids=[])
+    await message.answer(T.REPORT_STARTED.format(report_title=report_title(ReportKind.ALARM)))
+    await refresh_service_menu(
+        message.bot,
+        message.chat.id,
+        state,
+        show_photo_counter=False,
+        photo_count=0,
+    )
+
+
+@router.message(F.text == T.BTN_START_SHIFT, StateFilter(None), F.chat.type == ChatType.PRIVATE)
+async def menu_start_shift(message: Message, state: FSMContext, db: Database) -> None:
+    if not await db.get_guard_object_id(message.from_user.id):
+        return await message.answer(T.NOT_BOUND)
+    await _enter_video_scenario(message, state, ReportKind.START_SHIFT)
+
+
+@router.message(F.text == T.BTN_POST_CHECK, StateFilter(None), F.chat.type == ChatType.PRIVATE)
+async def menu_post_check(message: Message, state: FSMContext, db: Database) -> None:
+    if not await db.get_guard_object_id(message.from_user.id):
+        return await message.answer(T.NOT_BOUND)
+    await _enter_video_scenario(message, state, ReportKind.POST_CHECK)
+
+
+@router.message(F.text == T.BTN_HANDOVER, StateFilter(None), F.chat.type == ChatType.PRIVATE)
+async def menu_handover(message: Message, state: FSMContext, db: Database) -> None:
+    if not await db.get_guard_object_id(message.from_user.id):
+        return await message.answer(T.NOT_BOUND)
+    await _enter_photo_scenario(message, state, ReportKind.HANDOVER)
+
+
+@router.message(F.text == T.BTN_PATROL, StateFilter(None), F.chat.type == ChatType.PRIVATE)
+async def menu_patrol(message: Message, state: FSMContext, db: Database) -> None:
+    if not await db.get_guard_object_id(message.from_user.id):
+        return await message.answer(T.NOT_BOUND)
+    await _enter_photo_scenario(message, state, ReportKind.PATROL)
+
+
+@router.message(F.text == T.BTN_INSPECTION, StateFilter(None), F.chat.type == ChatType.PRIVATE)
+async def menu_inspection(message: Message, state: FSMContext, db: Database) -> None:
+    if not await db.get_guard_object_id(message.from_user.id):
+        return await message.answer(T.NOT_BOUND)
+    await _enter_photo_scenario(message, state, ReportKind.INSPECTION)
+
+
+@router.message(F.text == T.BTN_MESSAGE, StateFilter(None), F.chat.type == ChatType.PRIVATE)
+async def menu_message(message: Message, state: FSMContext, db: Database) -> None:
+    if not await db.get_guard_object_id(message.from_user.id):
+        return await message.answer(T.NOT_BOUND)
+    await _enter_message_scenario(message, state)
+
+
+@router.message(F.text == T.BTN_ALARM, StateFilter(None), F.chat.type == ChatType.PRIVATE)
+async def menu_alarm(message: Message, state: FSMContext, db: Database) -> None:
+    if not await db.get_guard_object_id(message.from_user.id):
+        return await message.answer(T.NOT_BOUND)
+    await _enter_alarm_scenario(message, state)
+
+
+async def _flush_album_to_entries(
+    bot,
+    chat_id: int,
+    state: FSMContext,
+    *,
+    show_counter: bool,
+    is_message_scenario: bool = False,
+) -> None:
+    data = await state.get_data()
+    buf: List[dict] = list(data.get("album_buffer") or [])
+    if not buf:
+        await state.update_data(album_buffer=[], album_group_id=None)
+        return
+    entries: List[dict] = list(data.get("photo_entries") or [])
+    if len(entries) + len(buf) > HARD_PHOTO_LIMIT:
+        msg = (
+            "Альбом не принят целиком: слишком много фото для одного отчёта."
+            if is_message_scenario
+            else (
+                "Альбом не принят целиком: превысил бы жёсткий лимит фото. "
+                f"Сейчас {len(entries)} / {HARD_PHOTO_LIMIT}. Завершите или отмените сценарий."
+            )
+        )
+        await send_explaining(bot, chat_id, msg)
+        await state.update_data(album_buffer=[], album_group_id=None)
+        await refresh_service_menu(
+            bot,
+            chat_id,
+            state,
+            show_photo_counter=show_counter,
+            photo_count=len(entries),
+        )
+        return
+    entries.extend(buf)
+    await state.update_data(photo_entries=entries, album_buffer=[], album_group_id=None)
+    if (
+        not is_message_scenario
+        and len(entries) > SOFT_PHOTO_LIMIT
+        and not data.get("soft_warned")
+    ):
+        await state.update_data(soft_warned=True)
+        await send_explaining(
+            bot,
+            chat_id,
+            T.SOFT_LIMIT_WARNING.format(n=len(entries), soft=SOFT_PHOTO_LIMIT, hard=HARD_PHOTO_LIMIT),
+        )
+    await refresh_service_menu(
+        bot,
+        chat_id,
+        state,
+        show_photo_counter=show_counter,
+        photo_count=len(entries),
+    )
+
+
+def _make_photo_entry(message: Message) -> dict:
+    return {
+        "file_id": message.photo[-1].file_id,
+        "dt": datetime.now(),
+        "message_id": message.message_id,
+    }
+
+
+@router.message(GuardStates.photo_report, F.photo)
+async def photo_report_collect(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    entries: List[dict] = list(data.get("photo_entries") or [])
+    if len(entries) >= HARD_PHOTO_LIMIT:
+        await send_explaining(
+            message.bot,
+            message.chat.id,
+            T.HARD_LIMIT_REACHED.format(hard=HARD_PHOTO_LIMIT, send=T.BTN_SEND_REPORT, main=T.BTN_MAIN_MENU),
+        )
+        await refresh_service_menu(
+            message.bot,
+            message.chat.id,
+            state,
+            show_photo_counter=True,
+            photo_count=len(entries),
+        )
+        return
+
+    mg = message.media_group_id
+    uid = message.from_user.id
+
+    if mg is None:
+        cancel_album_task(uid)
+        await _flush_album_to_entries(message.bot, message.chat.id, state, show_counter=True)
+        data = await state.get_data()
+        entries = list(data.get("photo_entries") or [])
+        if len(entries) >= HARD_PHOTO_LIMIT:
+            await send_explaining(
+                message.bot,
+                message.chat.id,
+                T.HARD_LIMIT_REACHED.format(
+                    hard=HARD_PHOTO_LIMIT,
+                    send=T.BTN_SEND_REPORT,
+                    main=T.BTN_MAIN_MENU,
+                ),
+            )
+            await refresh_service_menu(
+                message.bot,
+                message.chat.id,
+                state,
+                show_photo_counter=True,
+                photo_count=len(entries),
+            )
+            return
+        entries.append(_make_photo_entry(message))
+        await state.update_data(photo_entries=entries)
+        if len(entries) > SOFT_PHOTO_LIMIT and not data.get("soft_warned"):
+            await state.update_data(soft_warned=True)
+            await send_explaining(
+                message.bot,
+                message.chat.id,
+                T.SOFT_LIMIT_WARNING.format(
+                    n=len(entries),
+                    soft=SOFT_PHOTO_LIMIT,
+                    hard=HARD_PHOTO_LIMIT,
+                ),
+            )
+        await refresh_service_menu(
+            message.bot,
+            message.chat.id,
+            state,
+            show_photo_counter=True,
+            photo_count=len(entries),
+        )
+        return
+
+    gid = str(mg)
+    cur_gid = data.get("album_group_id")
+    if cur_gid and cur_gid != gid:
+        cancel_album_task(uid)
+        await _flush_album_to_entries(message.bot, message.chat.id, state, show_counter=True)
+
+    data = await state.get_data()
+    buf = list(data.get("album_buffer") or [])
+    buf.append(_make_photo_entry(message))
+    await state.update_data(album_buffer=buf, album_group_id=gid)
+
+    schedule_album_task(
+        uid,
+        lambda: _debounce_photo(uid, message.bot, message.chat.id, state, True, False),
+    )
+
+
+async def _debounce_photo(
+    user_id: int,
+    bot,
+    chat_id: int,
+    state: FSMContext,
+    show_counter: bool,
+    is_message_scenario: bool,
+) -> None:
+    await asyncio.sleep(ALBUM_DEBOUNCE_SECONDS)
+    await _flush_album_to_entries(
+        bot,
+        chat_id,
+        state,
+        show_counter=show_counter,
+        is_message_scenario=is_message_scenario,
+    )
+
+
+@router.message(GuardStates.photo_report)
+async def photo_report_wrong(message: Message, state: FSMContext) -> None:
+    await send_explaining(
+        message.bot,
+        message.chat.id,
+        T.WRONG_CONTENT.format(reason="нужны только фото"),
+    )
+    data = await state.get_data()
+    await refresh_service_menu(
+        message.bot,
+        message.chat.id,
+        state,
+        show_photo_counter=True,
+        photo_count=len(data.get("photo_entries") or []),
+    )
+
+
+@router.message(GuardStates.video_note_report, F.video_note)
+async def video_note_collect(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    ids: List[int] = list(data.get("video_msg_ids") or [])
+    if ids:
+        await send_explaining(message.bot, message.chat.id, T.SECOND_MEDIA_NOT_ALLOWED)
+    else:
+        ids.append(message.message_id)
+        await state.update_data(video_msg_ids=ids)
+    await refresh_service_menu(
+        message.bot,
+        message.chat.id,
+        state,
+        show_photo_counter=False,
+        photo_count=0,
+    )
+
+
+@router.message(GuardStates.video_note_report)
+async def video_note_wrong(message: Message, state: FSMContext) -> None:
+    await send_explaining(
+        message.bot,
+        message.chat.id,
+        T.WRONG_CONTENT.format(reason="нужен только видеокружок"),
+    )
+    await refresh_service_menu(
+        message.bot,
+        message.chat.id,
+        state,
+        show_photo_counter=False,
+        photo_count=0,
+    )
+
+
+@router.message(GuardStates.message_report, F.photo)
+async def message_scenario_photo(message: Message, state: FSMContext) -> None:
+    if message.caption:
+        await send_explaining(message.bot, message.chat.id, T.PHOTO_CAPTION_FORBIDDEN)
+        return await refresh_service_menu(
+            message.bot,
+            message.chat.id,
+            state,
+            show_photo_counter=False,
+            photo_count=0,
+        )
+    data = await state.get_data()
+    locked = data.get("msg_locked_kind")
+    if locked and locked != "photo":
+        await send_explaining(message.bot, message.chat.id, T.WRONG_CONTENT_MESSAGE_MIX)
+        return await refresh_service_menu(
+            message.bot,
+            message.chat.id,
+            state,
+            show_photo_counter=False,
+            photo_count=0,
+        )
+    await state.update_data(msg_locked_kind="photo")
+    uid = message.from_user.id
+    mg = message.media_group_id
+    entries: List[dict] = list(data.get("photo_entries") or [])
+
+    if mg is None:
+        cancel_album_task(uid)
+        await _flush_album_to_entries(
+            message.bot,
+            message.chat.id,
+            state,
+            show_counter=False,
+            is_message_scenario=True,
+        )
+        data = await state.get_data()
+        entries = list(data.get("photo_entries") or [])
+        if len(entries) >= HARD_PHOTO_LIMIT:
+            await send_explaining(
+                message.bot,
+                message.chat.id,
+                "Достигнут предел фото в одном отчёте.",
+            )
+            return await refresh_service_menu(
+                message.bot,
+                message.chat.id,
+                state,
+                show_photo_counter=False,
+                photo_count=0,
+            )
+        entries.append(_make_photo_entry(message))
+        await state.update_data(photo_entries=entries)
+        return await refresh_service_menu(
+            message.bot,
+            message.chat.id,
+            state,
+            show_photo_counter=False,
+            photo_count=0,
+        )
+
+    gid = str(mg)
+    cur_gid = data.get("album_group_id")
+    if cur_gid and cur_gid != gid:
+        cancel_album_task(uid)
+        await _flush_album_to_entries(
+            message.bot,
+            message.chat.id,
+            state,
+            show_counter=False,
+            is_message_scenario=True,
+        )
+
+    data = await state.get_data()
+    buf = list(data.get("album_buffer") or [])
+    buf.append(_make_photo_entry(message))
+    await state.update_data(album_buffer=buf, album_group_id=gid)
+    schedule_album_task(
+        uid,
+        lambda: _debounce_photo(uid, message.bot, message.chat.id, state, False, True),
+    )
+
+
+@router.message(GuardStates.message_report, F.video)
+async def message_scenario_video(message: Message, state: FSMContext) -> None:
+    await _message_single_media(message, state, "video", lambda m: m.video is not None)
+
+
+@router.message(GuardStates.message_report, F.voice)
+async def message_scenario_voice(message: Message, state: FSMContext) -> None:
+    await _message_single_media(message, state, "voice", lambda m: m.voice is not None)
+
+
+@router.message(GuardStates.message_report, F.text & ~F.text.startswith("/"))
+async def message_scenario_text(message: Message, state: FSMContext) -> None:
+    if not message.text:
+        return
+    await _message_single_media(message, state, "text", lambda m: bool(m.text))
+
+
+async def _message_single_media(message: Message, state: FSMContext, kind: str, _check) -> None:
+    data = await state.get_data()
+    locked = data.get("msg_locked_kind")
+    if locked and locked != kind:
+        await send_explaining(message.bot, message.chat.id, T.WRONG_CONTENT_MESSAGE_MIX)
+        return await refresh_service_menu(
+            message.bot,
+            message.chat.id,
+            state,
+            show_photo_counter=False,
+            photo_count=0,
+        )
+    if kind == "text":
+        if data.get("message_text_body") is not None:
+            await send_explaining(message.bot, message.chat.id, T.SECOND_MEDIA_NOT_ALLOWED)
+            return await refresh_service_menu(
+                message.bot,
+                message.chat.id,
+                state,
+                show_photo_counter=False,
+                photo_count=0,
+            )
+        await state.update_data(
+            msg_locked_kind=kind,
+            message_text_body=message.text,
+            single_msg_id=None,
+        )
+    else:
+        if data.get("single_msg_id") is not None:
+            await send_explaining(message.bot, message.chat.id, T.SECOND_MEDIA_NOT_ALLOWED)
+            return await refresh_service_menu(
+                message.bot,
+                message.chat.id,
+                state,
+                show_photo_counter=False,
+                photo_count=0,
+            )
+        await state.update_data(msg_locked_kind=kind, single_msg_id=message.message_id)
+    await refresh_service_menu(
+        message.bot,
+        message.chat.id,
+        state,
+        show_photo_counter=False,
+        photo_count=0,
+    )
+
+
+@router.message(GuardStates.message_report)
+async def message_scenario_wrong(message: Message, state: FSMContext) -> None:
+    await send_explaining(
+        message.bot,
+        message.chat.id,
+        T.WRONG_CONTENT.format(reason="допустимы текст, фото, одно видео или одно голосовое"),
+    )
+    await refresh_service_menu(
+        message.bot,
+        message.chat.id,
+        state,
+        show_photo_counter=False,
+        photo_count=0,
+    )
+
+
+@router.message(GuardStates.alarm_report)
+async def alarm_collect(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    ids: List[int] = list(data.get("alarm_msg_ids") or [])
+    ids.append(message.message_id)
+    await state.update_data(alarm_msg_ids=ids)
+    await refresh_service_menu(
+        message.bot,
+        message.chat.id,
+        state,
+        show_photo_counter=False,
+        photo_count=0,
+    )
+
+
+@router.callback_query(F.data == "svc_cancel", StateFilter(GuardStates))
+async def svc_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    cancel_album_task(callback.from_user.id)
+    await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+    await state.clear()
+    await callback.message.answer(T.ACTION_CANCELLED)
+    await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+    await callback.answer()
+
+
+async def _send_to_group_and_log(
+    bot,
+    db: Database,
+    user: Any,
+    obj,
+    *,
+    event_type: str,
+    link: str,
+    comment: str,
+) -> None:
+    label = f"id:{user.id}" + (f" @{user.username}" if getattr(user, "username", None) else "")
+    await sheets.log_event(obj.sheet_title, event_type, label, link, comment)
+
+
+@router.callback_query(F.data == "svc_send", GuardStates.photo_report)
+async def svc_send_photo(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
+    uid = callback.from_user.id
+    cancel_album_task(uid)
+    data = await state.get_data()
+    entries: List[dict] = list(data.get("photo_entries") or [])
+    if data.get("album_buffer"):
+        await _flush_album_to_entries(callback.bot, callback.message.chat.id, state, show_counter=True)
+        data = await state.get_data()
+        entries = list(data.get("photo_entries") or [])
+    if not entries:
+        await send_explaining(callback.bot, callback.message.chat.id, "Нет фото для отправки.")
+        return await callback.answer()
+
+    kind = ReportKind(data["report_kind"])
+    obj = await _object_for_guard(db, uid)
+    if not obj:
+        await send_explaining(callback.bot, callback.message.chat.id, T.NOT_BOUND)
+        return await callback.answer()
+
+    caption = format_group_caption(kind, len(entries), [e["dt"] for e in entries])
+    medias = [InputMediaPhoto(media=e["file_id"]) for e in entries]
+    medias[0].caption = caption
+    msgs = await callback.bot.send_media_group(chat_id=obj.group_chat_id, media=medias)
+    first_id = msgs[0].message_id
+    link = telegram_group_message_link(obj.group_chat_id, first_id)
+    await _send_to_group_and_log(
+        callback.bot,
+        db,
+        callback.from_user,
+        obj,
+        event_type=report_title(kind),
+        link=link,
+        comment=f"фото: {len(entries)}",
+    )
+
+    await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+    await state.clear()
+    await callback.message.answer(T.REPORT_SENT)
+    await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "svc_send", GuardStates.video_note_report)
+async def svc_send_video(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
+    data = await state.get_data()
+    ids: List[int] = list(data.get("video_msg_ids") or [])
+    if not ids:
+        await send_explaining(callback.bot, callback.message.chat.id, "Нет видеокружка для отправки.")
+        return await callback.answer()
+    kind = ReportKind(data["report_kind"])
+    obj = await _object_for_guard(db, callback.from_user.id)
+    if not obj:
+        await send_explaining(callback.bot, callback.message.chat.id, T.NOT_BOUND)
+        return await callback.answer()
+
+    times = [datetime.now()]
+    cap = format_text_report_caption(kind, times)
+    msg = await callback.bot.copy_message(
+        chat_id=obj.group_chat_id,
+        from_chat_id=callback.from_user.id,
+        message_id=ids[0],
+    )
+    await callback.bot.edit_message_caption(
+        chat_id=obj.group_chat_id,
+        message_id=msg.message_id,
+        caption=cap,
+    )
+    link = telegram_group_message_link(obj.group_chat_id, msg.message_id)
+    await _send_to_group_and_log(
+        callback.bot,
+        db,
+        callback.from_user,
+        obj,
+        event_type=report_title(kind),
+        link=link,
+        comment="видеокружок",
+    )
+    await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+    await state.clear()
+    await callback.message.answer(T.REPORT_SENT)
+    await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "svc_send", GuardStates.message_report)
+async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
+    uid = callback.from_user.id
+    cancel_album_task(uid)
+    data = await state.get_data()
+    if data.get("album_buffer"):
+        await _flush_album_to_entries(
+            callback.bot,
+            callback.message.chat.id,
+            state,
+            show_counter=False,
+            is_message_scenario=True,
+        )
+        data = await state.get_data()
+
+    locked = data.get("msg_locked_kind")
+    obj = await _object_for_guard(db, uid)
+    if not obj:
+        await send_explaining(callback.bot, callback.message.chat.id, T.NOT_BOUND)
+        return await callback.answer()
+
+    if locked == "photo":
+        entries = list(data.get("photo_entries") or [])
+        if not entries:
+            await send_explaining(callback.bot, callback.message.chat.id, "Нет фото для отправки.")
+            return await callback.answer()
+        caption = format_text_report_caption(ReportKind.MESSAGE, [e["dt"] for e in entries])
+        medias = [InputMediaPhoto(media=e["file_id"]) for e in entries]
+        medias[0].caption = caption
+        msgs = await callback.bot.send_media_group(chat_id=obj.group_chat_id, media=medias)
+        mid = msgs[0].message_id
+    elif locked == "text":
+        body = data.get("message_text_body")
+        if not body:
+            await send_explaining(callback.bot, callback.message.chat.id, "Нет текста для отправки.")
+            return await callback.answer()
+        header = format_text_report_caption(ReportKind.MESSAGE, [datetime.now()])
+        msg = await callback.bot.send_message(obj.group_chat_id, f"{header}\n\n{body}")
+        mid = msg.message_id
+    elif locked in ("video", "voice"):
+        smid = data.get("single_msg_id")
+        if not smid:
+            await send_explaining(callback.bot, callback.message.chat.id, "Нет содержимого для отправки.")
+            return await callback.answer()
+        msg = await callback.bot.copy_message(
+            chat_id=obj.group_chat_id,
+            from_chat_id=uid,
+            message_id=smid,
+        )
+        mid = msg.message_id
+        extra = format_text_report_caption(ReportKind.MESSAGE, [datetime.now()])
+        try:
+            await callback.bot.edit_message_caption(chat_id=obj.group_chat_id, message_id=mid, caption=extra)
+        except Exception:
+            await callback.bot.send_message(obj.group_chat_id, extra)
+    else:
+        await send_explaining(callback.bot, callback.message.chat.id, "Сначала отправьте содержимое отчёта.")
+        return await callback.answer()
+
+    link = telegram_group_message_link(obj.group_chat_id, mid)
+    ref_id = await db.add_group_post_ref(obj.group_chat_id, mid)
+    cb_data = f"a:{ref_id}"
+    await callback.bot.edit_message_reply_markup(
+        chat_id=obj.group_chat_id,
+        message_id=mid,
+        reply_markup=accounted_markup(cb_data),
+    )
+    try:
+        await callback.bot.pin_chat_message(obj.group_chat_id, mid, disable_notification=True)
+    except Exception:
+        pass
+
+    await _send_to_group_and_log(
+        callback.bot,
+        db,
+        callback.from_user,
+        obj,
+        event_type=report_title(ReportKind.MESSAGE),
+        link=link,
+        comment=f"тип: {locked}",
+    )
+
+    await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+    await state.clear()
+    await callback.message.answer(T.REPORT_SENT)
+    await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "svc_send", GuardStates.alarm_report)
+async def svc_send_alarm(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
+    data = await state.get_data()
+    ids: List[int] = list(data.get("alarm_msg_ids") or [])
+    if not ids:
+        await send_explaining(callback.bot, callback.message.chat.id, "Нет сообщений для тревоги.")
+        return await callback.answer()
+    obj = await _object_for_guard(db, callback.from_user.id)
+    if not obj:
+        await send_explaining(callback.bot, callback.message.chat.id, T.NOT_BOUND)
+        return await callback.answer()
+
+    first_mid: Optional[int] = None
+    for mid in ids:
+        m = await callback.bot.copy_message(
+            chat_id=obj.group_chat_id,
+            from_chat_id=callback.from_user.id,
+            message_id=mid,
+        )
+        if first_mid is None:
+            first_mid = m.message_id
+            cap = format_text_report_caption(ReportKind.ALARM, [datetime.now()])
+            try:
+                await callback.bot.edit_message_caption(
+                    chat_id=obj.group_chat_id,
+                    message_id=first_mid,
+                    caption=cap,
+                )
+            except Exception:
+                await callback.bot.send_message(obj.group_chat_id, cap)
+
+    link = telegram_group_message_link(obj.group_chat_id, first_mid or 0)
+    await _send_to_group_and_log(
+        callback.bot,
+        db,
+        callback.from_user,
+        obj,
+        event_type=report_title(ReportKind.ALARM),
+        link=link,
+        comment=f"сообщений: {len(ids)}",
+    )
+
+    await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+    await state.clear()
+    await callback.message.answer(T.REPORT_SENT)
+    await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+    await callback.answer()

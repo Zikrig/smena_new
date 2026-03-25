@@ -1,0 +1,13 @@
+services:
+  bot:
+    build: .
+    container_name: guard_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Поверх .env: БД в томе (на хосте — папка ./data)
+      DATABASE_PATH: /app/data/guard_bot.db
+    volumes:
+      - ./data:/app/data
+    # При необходимости пробросьте JSON ключа в data/service_account.json на хосте
