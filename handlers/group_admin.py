@@ -10,7 +10,7 @@ from core.utils import is_bot_admin
 router = Router(name="group_admin")
 
 
-@router.message(Command("info"), F.chat.type.in_({"group", "supergroup"}))
+@router.message(Command("info"))
 async def cmd_info(message: Message) -> None:
     if not message.from_user or not is_bot_admin(message.from_user.id):
         return await message.reply(T.BOT_ADMIN_ONLY)
