@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, List, Optional
 
 from aiogram import F, Router
-from aiogram.exceptions import TelegramRetryAfter
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.methods import SendMediaGroup
 from aiogram.enums import ChatType
 from aiogram.filters import CommandStart, StateFilter
@@ -41,6 +41,20 @@ async def _pin_report_message(bot, chat_id: int, message_id: int) -> None:
         await bot.pin_chat_message(chat_id, message_id, disable_notification=True)
     except Exception as e:
         _log.warning("Не удалось закрепить сообщение %s в чате %s: %s", message_id, chat_id, e)
+
+
+async def _recover_from_group_send_error(
+    callback: CallbackQuery, state: FSMContext, exc: Exception
+) -> None:
+    _log.warning("Отправка в группу объекта не удалась: %s", exc)
+    await send_explaining(
+        callback.bot,
+        callback.message.chat.id,
+        T.GROUP_CHAT_UNAVAILABLE,
+    )
+    await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+    await state.clear()
+    await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
 
 
 async def guard_access(
@@ -754,28 +768,31 @@ async def svc_send_photo(callback: CallbackQuery, state: FSMContext, db: Databas
 
     await callback.answer()
 
-    caption = format_group_caption(kind, len(entries), [e["dt"] for e in entries])
-    first_id = await _send_photos_in_album_chunks(
-        callback.bot,
-        obj.group_chat_id,
-        entries,
-        caption,
-    )
-    link = telegram_group_message_link(obj.group_chat_id, first_id)
-    await _send_to_group_and_log(
-        callback.bot,
-        db,
-        callback.from_user,
-        obj,
-        event_type=report_title(kind),
-        link=link,
-        comment=f"фото: {len(entries)}",
-    )
+    try:
+        caption = format_group_caption(kind, len(entries), [e["dt"] for e in entries])
+        first_id = await _send_photos_in_album_chunks(
+            callback.bot,
+            obj.group_chat_id,
+            entries,
+            caption,
+        )
+        link = telegram_group_message_link(obj.group_chat_id, first_id)
+        await _send_to_group_and_log(
+            callback.bot,
+            db,
+            callback.from_user,
+            obj,
+            event_type=report_title(kind),
+            link=link,
+            comment=f"фото: {len(entries)}",
+        )
 
-    await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
-    await state.clear()
-    await callback.message.answer(T.REPORT_SENT)
-    await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+        await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+        await state.clear()
+        await callback.message.answer(T.REPORT_SENT)
+        await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+    except TelegramBadRequest as e:
+        await _recover_from_group_send_error(callback, state, e)
 
 
 @router.callback_query(F.data == "svc_send", GuardStates.video_note_report)
@@ -797,33 +814,36 @@ async def svc_send_video(callback: CallbackQuery, state: FSMContext, db: Databas
 
     await callback.answer()
 
-    times = [datetime.now()]
-    cap = format_text_report_caption(kind, times)
-    msg = await callback.bot.copy_message(
-        chat_id=obj.group_chat_id,
-        from_chat_id=callback.from_user.id,
-        message_id=ids[0],
-    )
-    # У video_note нет caption в API — текст отчёта отдельным сообщением (ответ на кружок).
-    await callback.bot.send_message(
-        obj.group_chat_id,
-        cap,
-        reply_to_message_id=msg.message_id,
-    )
-    link = telegram_group_message_link(obj.group_chat_id, msg.message_id)
-    await _send_to_group_and_log(
-        callback.bot,
-        db,
-        callback.from_user,
-        obj,
-        event_type=report_title(kind),
-        link=link,
-        comment="видеокружок",
-    )
-    await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
-    await state.clear()
-    await callback.message.answer(T.REPORT_SENT)
-    await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+    try:
+        times = [datetime.now()]
+        cap = format_text_report_caption(kind, times)
+        msg = await callback.bot.copy_message(
+            chat_id=obj.group_chat_id,
+            from_chat_id=callback.from_user.id,
+            message_id=ids[0],
+        )
+        # У video_note нет caption в API — текст отчёта отдельным сообщением (ответ на кружок).
+        await callback.bot.send_message(
+            obj.group_chat_id,
+            cap,
+            reply_to_message_id=msg.message_id,
+        )
+        link = telegram_group_message_link(obj.group_chat_id, msg.message_id)
+        await _send_to_group_and_log(
+            callback.bot,
+            db,
+            callback.from_user,
+            obj,
+            event_type=report_title(kind),
+            link=link,
+            comment="видеокружок",
+        )
+        await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+        await state.clear()
+        await callback.message.answer(T.REPORT_SENT)
+        await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+    except TelegramBadRequest as e:
+        await _recover_from_group_send_error(callback, state, e)
 
 
 @router.callback_query(F.data == "svc_send", GuardStates.message_report)
@@ -851,82 +871,90 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
         )
         return await callback.answer()
 
-    if locked == "photo":
-        entries = list(data.get("photo_entries") or [])
-        if not entries:
-            await send_explaining(callback.bot, callback.message.chat.id, "Нет фото для отправки.")
-            return await callback.answer()
-        ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
-        kb = accounted_markup(f"a:{ref_id}")
-        caption = format_text_report_caption(ReportKind.MESSAGE, [e["dt"] for e in entries])
-        mid = await _send_photos_in_album_chunks(
-            callback.bot,
-            obj.group_chat_id,
-            entries,
-            caption,
-            reply_markup_first=kb,
-        )
-    elif locked == "text":
-        body = data.get("message_text_body")
-        if not body:
-            await send_explaining(callback.bot, callback.message.chat.id, "Нет текста для отправки.")
-            return await callback.answer()
-        ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
-        kb = accounted_markup(f"a:{ref_id}")
-        header = format_text_report_caption(ReportKind.MESSAGE, [datetime.now()])
-        msg = await callback.bot.send_message(
-            obj.group_chat_id,
-            f"{header}\n\n{body}",
-            reply_markup=kb,
-        )
-        mid = msg.message_id
-    elif locked in ("video", "voice"):
-        smid = data.get("single_msg_id")
-        if not smid:
-            await send_explaining(callback.bot, callback.message.chat.id, "Нет содержимого для отправки.")
-            return await callback.answer()
-        ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
-        kb = accounted_markup(f"a:{ref_id}")
-        while True:
-            try:
-                msg = await callback.bot.copy_message(
-                    chat_id=obj.group_chat_id,
-                    from_chat_id=uid,
-                    message_id=smid,
-                    reply_markup=kb,
-                )
-                break
-            except TelegramRetryAfter as e:
-                await asyncio.sleep(float(e.retry_after))
-        mid = msg.message_id
-        extra = format_text_report_caption(ReportKind.MESSAGE, [datetime.now()])
-        try:
-            await callback.bot.edit_message_caption(chat_id=obj.group_chat_id, message_id=mid, caption=extra)
-        except Exception:
-            await callback.bot.send_message(obj.group_chat_id, extra)
-    else:
-        await send_explaining(callback.bot, callback.message.chat.id, "Сначала отправьте содержимое отчёта.")
-        return await callback.answer()
-
-    await db.finalize_group_post_ref(ref_id, mid)
-    link = telegram_group_message_link(obj.group_chat_id, mid)
-    await _pin_report_message(callback.bot, obj.group_chat_id, mid)
-
-    await _send_to_group_and_log(
-        callback.bot,
-        db,
-        callback.from_user,
-        obj,
-        event_type=report_title(ReportKind.MESSAGE),
-        link=link,
-        comment=f"тип: {locked}",
-    )
-
-    await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
-    await state.clear()
-    await callback.message.answer(T.REPORT_SENT)
-    await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
     await callback.answer()
+
+    try:
+        if locked == "photo":
+            entries = list(data.get("photo_entries") or [])
+            if not entries:
+                await send_explaining(callback.bot, callback.message.chat.id, "Нет фото для отправки.")
+                return
+            ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
+            kb = accounted_markup(f"a:{ref_id}")
+            caption = format_text_report_caption(ReportKind.MESSAGE, [e["dt"] for e in entries])
+            mid = await _send_photos_in_album_chunks(
+                callback.bot,
+                obj.group_chat_id,
+                entries,
+                caption,
+                reply_markup_first=kb,
+            )
+        elif locked == "text":
+            body = data.get("message_text_body")
+            if not body:
+                await send_explaining(callback.bot, callback.message.chat.id, "Нет текста для отправки.")
+                return
+            ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
+            kb = accounted_markup(f"a:{ref_id}")
+            header = format_text_report_caption(ReportKind.MESSAGE, [datetime.now()])
+            msg = await callback.bot.send_message(
+                obj.group_chat_id,
+                f"{header}\n\n{body}",
+                reply_markup=kb,
+            )
+            mid = msg.message_id
+        elif locked in ("video", "voice"):
+            smid = data.get("single_msg_id")
+            if not smid:
+                await send_explaining(callback.bot, callback.message.chat.id, "Нет содержимого для отправки.")
+                return
+            ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
+            kb = accounted_markup(f"a:{ref_id}")
+            while True:
+                try:
+                    msg = await callback.bot.copy_message(
+                        chat_id=obj.group_chat_id,
+                        from_chat_id=uid,
+                        message_id=smid,
+                        reply_markup=kb,
+                    )
+                    break
+                except TelegramRetryAfter as e:
+                    await asyncio.sleep(float(e.retry_after))
+            mid = msg.message_id
+            extra = format_text_report_caption(ReportKind.MESSAGE, [datetime.now()])
+            try:
+                await callback.bot.edit_message_caption(
+                    chat_id=obj.group_chat_id, message_id=mid, caption=extra
+                )
+            except Exception:
+                await callback.bot.send_message(obj.group_chat_id, extra)
+        else:
+            await send_explaining(
+                callback.bot, callback.message.chat.id, "Сначала отправьте содержимое отчёта."
+            )
+            return
+
+        await db.finalize_group_post_ref(ref_id, mid)
+        link = telegram_group_message_link(obj.group_chat_id, mid)
+        await _pin_report_message(callback.bot, obj.group_chat_id, mid)
+
+        await _send_to_group_and_log(
+            callback.bot,
+            db,
+            callback.from_user,
+            obj,
+            event_type=report_title(ReportKind.MESSAGE),
+            link=link,
+            comment=f"тип: {locked}",
+        )
+
+        await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+        await state.clear()
+        await callback.message.answer(T.REPORT_SENT)
+        await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+    except TelegramBadRequest as e:
+        await _recover_from_group_send_error(callback, state, e)
 
 
 @router.callback_query(F.data == "svc_send", GuardStates.alarm_report)
@@ -947,40 +975,43 @@ async def svc_send_alarm(callback: CallbackQuery, state: FSMContext, db: Databas
 
     await callback.answer()
 
-    first_mid: Optional[int] = None
-    for mid in ids:
-        m = await callback.bot.copy_message(
-            chat_id=obj.group_chat_id,
-            from_chat_id=callback.from_user.id,
-            message_id=mid,
+    try:
+        first_mid: Optional[int] = None
+        for mid in ids:
+            m = await callback.bot.copy_message(
+                chat_id=obj.group_chat_id,
+                from_chat_id=callback.from_user.id,
+                message_id=mid,
+            )
+            if first_mid is None:
+                first_mid = m.message_id
+                cap = format_text_report_caption(ReportKind.ALARM, [datetime.now()])
+                try:
+                    await callback.bot.edit_message_caption(
+                        chat_id=obj.group_chat_id,
+                        message_id=first_mid,
+                        caption=cap,
+                    )
+                except Exception:
+                    await callback.bot.send_message(obj.group_chat_id, cap)
+
+        link = telegram_group_message_link(obj.group_chat_id, first_mid or 0)
+        await _send_to_group_and_log(
+            callback.bot,
+            db,
+            callback.from_user,
+            obj,
+            event_type=report_title(ReportKind.ALARM),
+            link=link,
+            comment=f"сообщений: {len(ids)}",
         )
-        if first_mid is None:
-            first_mid = m.message_id
-            cap = format_text_report_caption(ReportKind.ALARM, [datetime.now()])
-            try:
-                await callback.bot.edit_message_caption(
-                    chat_id=obj.group_chat_id,
-                    message_id=first_mid,
-                    caption=cap,
-                )
-            except Exception:
-                await callback.bot.send_message(obj.group_chat_id, cap)
 
-    link = telegram_group_message_link(obj.group_chat_id, first_mid or 0)
-    await _send_to_group_and_log(
-        callback.bot,
-        db,
-        callback.from_user,
-        obj,
-        event_type=report_title(ReportKind.ALARM),
-        link=link,
-        comment=f"сообщений: {len(ids)}",
-    )
-
-    await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
-    await state.clear()
-    await callback.message.answer(T.REPORT_SENT)
-    await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+        await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+        await state.clear()
+        await callback.message.answer(T.REPORT_SENT)
+        await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+    except TelegramBadRequest as e:
+        await _recover_from_group_send_error(callback, state, e)
 
 
 @router.message(StateFilter(None), F.chat.type == ChatType.PRIVATE)
