@@ -11,21 +11,35 @@ def format_group_caption(
     photo_count: int,
     times: List[datetime],
 ) -> str:
-    """Подпись отчёта в группе (ТЗ п.11) — дата и список времён."""
+    """Подпись отчёта в группе в стиле старой версии: время, дата, медиа."""
     title = report_title(kind)
     em = emoji_for_kind(kind)
-    lines = [f"{em} {title}", f"Фото: {photo_count}", "Время:"]
-    for i, t in enumerate(times, start=1):
-        lines.append(f"{i}) {t.strftime('%d.%m.%Y %H:%M:%S')}")
+    t = times[0] if times else datetime.now()
+    lines = [
+        f"{em} {title}",
+        f"⏰ Время: {t.strftime('%H:%M:%S')}",
+        f"📅 Дата: {t.strftime('%d.%m.%Y')}",
+        f"🖼 Медиа: фото ({photo_count})",
+    ]
     return "\n".join(lines)
 
 
 def format_text_report_caption(kind: ReportKind, times: List[datetime], extra: str = "") -> str:
     em = emoji_for_kind(kind)
     title = report_title(kind)
-    lines = [f"{em} {title}", "Время:"]
-    for i, t in enumerate(times, start=1):
-        lines.append(f"{i}) {t.strftime('%d.%m.%Y %H:%M:%S')}")
+    t = times[0] if times else datetime.now()
+    media = {
+        ReportKind.START_SHIFT: "видеокружок",
+        ReportKind.POST_CHECK: "видеокружок",
+        ReportKind.MESSAGE: "сообщение",
+        ReportKind.ALARM: "сообщение",
+    }.get(kind, "сообщение")
+    lines = [
+        f"{em} {title}",
+        f"⏰ Время: {t.strftime('%H:%M:%S')}",
+        f"📅 Дата: {t.strftime('%d.%m.%Y')}",
+        f"📎 Медиа: {media}",
+    ]
     if extra:
         lines.append(extra)
     return "\n".join(lines)

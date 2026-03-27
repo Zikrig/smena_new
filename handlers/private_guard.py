@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from io import BytesIO
 from datetime import datetime
 from typing import Any, List, Optional
 
@@ -11,7 +12,7 @@ from aiogram.methods import SendMediaGroup
 from aiogram.enums import ChatType
 from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InputMediaPhoto, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, InputMediaPhoto, Message
 
 from constants import (
     ALBUM_DEBOUNCE_SECONDS,
@@ -31,6 +32,7 @@ from services.report_build import format_group_caption, format_text_report_capti
 from services.service_menu import refresh_service_menu, send_explaining
 from services.service_menu import clear_service_menu_message
 from services import sheets
+from services.image_stamp import stamp_datetime_on_photo
 
 router = Router(name="private_guard")
 _log = logging.getLogger(__name__)
@@ -269,16 +271,17 @@ async def _flush_album_to_entries(
         return
     entries: List[dict] = list(data.get("photo_entries") or [])
     if len(entries) + len(buf) > HARD_PHOTO_LIMIT:
-        msg = (
-            "Альбом не принят целиком: слишком много фото для одного отчёта."
-            if is_message_scenario
-            else (
-                "Альбом не принят целиком: превысил бы жёсткий лимит фото. "
-                f"Сейчас {len(entries)} / {HARD_PHOTO_LIMIT}. Завершите или отмените сценарий."
+        can_take = max(0, HARD_PHOTO_LIMIT - len(entries))
+        dropped = len(buf) - can_take
+        if can_take > 0:
+            entries.extend(buf[:can_take])
+        await state.update_data(photo_entries=entries, album_buffer=[], album_group_id=None)
+        if dropped > 0:
+            await send_explaining(
+                bot,
+                chat_id,
+                T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=dropped),
             )
-        )
-        await send_explaining(bot, chat_id, msg)
-        await state.update_data(album_buffer=[], album_group_id=None)
         await refresh_service_menu(
             bot,
             chat_id,
@@ -325,7 +328,7 @@ async def photo_report_collect(message: Message, state: FSMContext) -> None:
         await send_explaining(
             message.bot,
             message.chat.id,
-            T.HARD_LIMIT_REACHED.format(hard=HARD_PHOTO_LIMIT, send=T.BTN_SEND_REPORT, main=T.BTN_MAIN_MENU),
+            T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=1),
         )
         await refresh_service_menu(
             message.bot,
@@ -348,11 +351,7 @@ async def photo_report_collect(message: Message, state: FSMContext) -> None:
             await send_explaining(
                 message.bot,
                 message.chat.id,
-                T.HARD_LIMIT_REACHED.format(
-                    hard=HARD_PHOTO_LIMIT,
-                    send=T.BTN_SEND_REPORT,
-                    main=T.BTN_MAIN_MENU,
-                ),
+                T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=1),
             )
             await refresh_service_menu(
                 message.bot,
@@ -512,7 +511,7 @@ async def message_scenario_photo(message: Message, state: FSMContext) -> None:
             await send_explaining(
                 message.bot,
                 message.chat.id,
-                "Достигнут предел фото в одном отчёте.",
+                T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=1),
             )
             return await refresh_service_menu(
                 message.bot,
@@ -676,7 +675,7 @@ async def _send_media_group_with_flood_retry(
 async def _send_photo_with_flood_retry(
     bot,
     chat_id: int,
-    file_id: str,
+    photo: str | BufferedInputFile,
     *,
     caption: Optional[str] = None,
     reply_markup: Optional[Any] = None,
@@ -685,12 +684,20 @@ async def _send_photo_with_flood_retry(
         try:
             return await bot.send_photo(
                 chat_id=chat_id,
-                photo=file_id,
+                photo=photo,
                 caption=caption,
                 reply_markup=reply_markup,
             )
         except TelegramRetryAfter as e:
             await asyncio.sleep(float(e.retry_after))
+
+
+async def _build_stamped_photo(bot, file_id: str, dt: datetime) -> BufferedInputFile:
+    tg_file = await bot.get_file(file_id)
+    raw = BytesIO()
+    await bot.download_file(tg_file.file_path, destination=raw)
+    stamped = stamp_datetime_on_photo(raw.getvalue(), dt.strftime("%d.%m.%Y %H:%M:%S"))
+    return BufferedInputFile(stamped, filename="report.jpg")
 
 
 async def _send_photos_in_album_chunks(
@@ -709,16 +716,20 @@ async def _send_photos_in_album_chunks(
         rm = reply_markup_first if start == 0 else None
         if len(chunk) == 1:
             cap = caption_on_first if start == 0 else None
+            photo = await _build_stamped_photo(bot, chunk[0]["file_id"], chunk[0]["dt"])
             msg = await _send_photo_with_flood_retry(
                 bot,
                 chat_id,
-                chunk[0]["file_id"],
+                photo,
                 caption=cap,
                 reply_markup=rm,
             )
             msgs = [msg]
         else:
-            medias = [InputMediaPhoto(media=e["file_id"]) for e in chunk]
+            medias = []
+            for e in chunk:
+                photo = await _build_stamped_photo(bot, e["file_id"], e["dt"])
+                medias.append(InputMediaPhoto(media=photo))
             if start == 0:
                 medias[0].caption = caption_on_first
             msgs = await _send_media_group_with_flood_retry(bot, chat_id, medias, reply_markup=rm)
