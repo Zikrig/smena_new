@@ -22,6 +22,8 @@ MAIN_MENU_HINT = "Главное меню объекта:"
 
 REPORT_STARTED = "Запущен отчёт: {report_title}"
 
+REPORT_SENDING = "Начинаю отправку отчёта…"
+
 REPORT_SENT = "Отчёт отправлен."
 
 ACTION_CANCELLED = "Действие отменено."

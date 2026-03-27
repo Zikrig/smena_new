@@ -779,6 +779,7 @@ async def svc_send_photo(callback: CallbackQuery, state: FSMContext, db: Databas
         return await callback.answer()
 
     await callback.answer()
+    await callback.message.answer(T.REPORT_SENDING)
 
     try:
         caption = format_group_caption(kind, len(entries), [e["dt"] for e in entries])
@@ -825,6 +826,7 @@ async def svc_send_video(callback: CallbackQuery, state: FSMContext, db: Databas
         return await callback.answer()
 
     await callback.answer()
+    await callback.message.answer(T.REPORT_SENDING)
 
     try:
         times = [datetime.now()]
@@ -884,6 +886,7 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
         return await callback.answer()
 
     await callback.answer()
+    await callback.message.answer(T.REPORT_SENDING)
 
     try:
         if locked == "photo":
@@ -986,6 +989,7 @@ async def svc_send_alarm(callback: CallbackQuery, state: FSMContext, db: Databas
         return await callback.answer()
 
     await callback.answer()
+    await callback.message.answer(T.REPORT_SENDING)
 
     try:
         first_mid: Optional[int] = None
