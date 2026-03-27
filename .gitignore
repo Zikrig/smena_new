@@ -10,3 +10,4 @@ service_account.json
 *.log
 .idea/
 .vscode/
+smena_sled/

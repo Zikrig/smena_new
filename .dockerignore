@@ -9,3 +9,5 @@ data
 .venv
 venv
 *.md
+
+smena_sled/

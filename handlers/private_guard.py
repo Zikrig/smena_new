@@ -324,7 +324,11 @@ def _make_photo_entry(message: Message) -> dict:
 async def photo_report_collect(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     entries: List[dict] = list(data.get("photo_entries") or [])
-    if len(entries) >= HARD_PHOTO_LIMIT:
+    mg = message.media_group_id
+    uid = message.from_user.id
+
+    # Для альбомов не отвечаем на каждый кадр отдельно: дождёмся debounce и посчитаем общее N.
+    if mg is None and len(entries) >= HARD_PHOTO_LIMIT:
         await send_explaining(
             message.bot,
             message.chat.id,
@@ -338,9 +342,6 @@ async def photo_report_collect(message: Message, state: FSMContext) -> None:
             photo_count=len(entries),
         )
         return
-
-    mg = message.media_group_id
-    uid = message.from_user.id
 
     if mg is None:
         cancel_album_task(uid)
