@@ -9,13 +9,19 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _parse_admin_ids(raw: str) -> list[int]:
+    """Читает ADMIN_IDS из .env: запятая или точка с запятой, пробелы, кавычки вокруг чисел."""
     if not raw or not raw.strip():
         return []
+    s = raw.strip().strip('"').strip("'")
     out: list[int] = []
-    for part in raw.replace(" ", "").split(","):
-        p = part.strip()
-        if p.isdigit():
+    for part in s.replace(";", ",").split(","):
+        p = part.strip().strip('"').strip("'")
+        if not p:
+            continue
+        try:
             out.append(int(p))
+        except ValueError:
+            continue
     return out
 
 

@@ -83,6 +83,11 @@ SOFT_LIMIT_WARNING = (
 
 BOT_ADMIN_ONLY = "Нет доступа: ваш id не в списке ADMIN_IDS."
 
+CHANNEL_ADMIN_FALLBACK = (
+    "В канале MAX не передаётся отправитель команды. "
+    "Добавьте в ADMIN_IDS user id владельца канала или выполните команду в чате обсуждения (кнопка «Чат»), а не в ленте."
+)
+
 BOT_ADMIN_DENIED = "Доступ к панели только у администраторов бота (ADMIN_IDS)."
 
 OBJECT_PAUSED = (

@@ -19,6 +19,11 @@ class IsGroupChat(BaseFilter):
         return event.message.recipient.chat_type == ChatType.CHAT
 
 
+class IsGroupOrChannel(BaseFilter):
+    async def __call__(self, event) -> bool:
+        return event.message.recipient.chat_type in (ChatType.CHAT, ChatType.CHANNEL)
+
+
 class HasImageAttachment(BaseFilter):
     async def __call__(self, event) -> bool:
         body = event.message.body

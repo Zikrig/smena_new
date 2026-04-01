@@ -5,28 +5,28 @@ from maxapi.filters.command import Command
 from maxapi.types.updates.message_created import MessageCreated
 
 import texts_ru as T
-from core.max_filters import IsGroupChat
-from core.utils import is_bot_admin
+from core.max_filters import IsGroupOrChannel
+from core.utils import is_collective_chat_operator
 from db.database import Database
 
 router = Router(router_id="group_admin")
 
 
-@router.message_created(Command("info"), IsGroupChat())
+@router.message_created(Command("info"), IsGroupOrChannel())
 async def cmd_info(event: MessageCreated, context: BaseContext) -> None:
     message = event.message
-    su = message.sender.user_id if message.sender else None
-    if su is None or not is_bot_admin(su):
-        return await message.reply(text=T.BOT_ADMIN_ONLY)
+    if not await is_collective_chat_operator(message, chat=event.chat):
+        deny = T.CHANNEL_ADMIN_FALLBACK if message.sender is None else T.BOT_ADMIN_ONLY
+        return await message.reply(text=deny)
     await message.reply(text=T.ADMIN_COMMANDS_LIST, parse_mode=ParseMode.HTML)
 
 
-@router.message_created(Command("set_object"), IsGroupChat())
+@router.message_created(Command("set_object"), IsGroupOrChannel())
 async def cmd_set_object(event: MessageCreated, context: BaseContext, db: Database) -> None:
     message = event.message
-    su = message.sender.user_id if message.sender else None
-    if su is None or not is_bot_admin(su):
-        return await message.reply(text=T.BOT_ADMIN_ONLY)
+    if not await is_collective_chat_operator(message, chat=event.chat):
+        deny = T.CHANNEL_ADMIN_FALLBACK if message.sender is None else T.BOT_ADMIN_ONLY
+        return await message.reply(text=deny)
     body = message.body
     parts = (body.text or "").split(maxsplit=1) if body else []
     if len(parts) < 2 or not parts[1].strip():
@@ -39,12 +39,12 @@ async def cmd_set_object(event: MessageCreated, context: BaseContext, db: Databa
     await message.reply(text=T.OBJECT_REGISTERED.format(name=row.name))
 
 
-@router.message_created(Command("bind_guard"), IsGroupChat())
+@router.message_created(Command("bind_guard"), IsGroupOrChannel())
 async def cmd_bind_guard(event: MessageCreated, context: BaseContext, db: Database) -> None:
     message = event.message
-    su = message.sender.user_id if message.sender else None
-    if su is None or not is_bot_admin(su):
-        return await message.reply(text=T.BOT_ADMIN_ONLY)
+    if not await is_collective_chat_operator(message, chat=event.chat):
+        deny = T.CHANNEL_ADMIN_FALLBACK if message.sender is None else T.BOT_ADMIN_ONLY
+        return await message.reply(text=deny)
     cid = message.recipient.chat_id
     if cid is None:
         return
