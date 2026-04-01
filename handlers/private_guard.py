@@ -28,6 +28,7 @@ from core.utils import telegram_group_message_link
 from db.database import Database, ObjectRow
 import texts_ru as T
 from services.album_tasks import cancel_album_task, schedule_album_task
+from services.fallback_menu_tasks import cancel_fallback_menu_task, schedule_fallback_menu_task
 from services.report_build import format_group_caption, format_text_report_caption
 from services.service_menu import refresh_service_menu, send_explaining
 from services.service_menu import clear_service_menu_message
@@ -92,6 +93,7 @@ async def cmd_start(message: Message, state: FSMContext, db: Database) -> None:
     if not message.from_user:
         return
     cancel_album_task(message.from_user.id)
+    cancel_fallback_menu_task(message.from_user.id)
     parts = (message.text or "").split(maxsplit=1)
     arg = parts[1].strip() if len(parts) > 1 else ""
     if arg.startswith("bind_"):
@@ -118,6 +120,7 @@ async def _enter_photo_scenario(message: Message, state: FSMContext, kind: Repor
     await hide_inline_keyboard(message)
     await state.clear()
     cancel_album_task(message.from_user.id)
+    cancel_fallback_menu_task(message.from_user.id)
     await state.set_state(GuardStates.photo_report)
     await state.update_data(**_base_photo_data(kind))
     title = report_title(kind)
@@ -135,6 +138,7 @@ async def _enter_video_scenario(message: Message, state: FSMContext, kind: Repor
     await hide_inline_keyboard(message)
     await state.clear()
     cancel_album_task(message.from_user.id)
+    cancel_fallback_menu_task(message.from_user.id)
     await state.set_state(GuardStates.video_note_report)
     await state.update_data(report_kind=kind.value, video_msg_ids=[])
     title = report_title(kind)
@@ -152,6 +156,7 @@ async def _enter_message_scenario(message: Message, state: FSMContext) -> None:
     await hide_inline_keyboard(message)
     await state.clear()
     cancel_album_task(message.from_user.id)
+    cancel_fallback_menu_task(message.from_user.id)
     await state.set_state(GuardStates.message_report)
     await state.update_data(
         report_kind=ReportKind.MESSAGE.value,
@@ -177,6 +182,7 @@ async def _enter_alarm_scenario(message: Message, state: FSMContext) -> None:
     await hide_inline_keyboard(message)
     await state.clear()
     cancel_album_task(message.from_user.id)
+    cancel_fallback_menu_task(message.from_user.id)
     await state.set_state(GuardStates.alarm_report)
     await state.update_data(report_kind=ReportKind.ALARM.value, alarm_msg_ids=[])
     await message.answer(T.REPORT_STARTED.format(report_title=report_title(ReportKind.ALARM)))
@@ -652,6 +658,7 @@ async def alarm_collect(message: Message, state: FSMContext) -> None:
 async def svc_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     cancel_album_task(callback.from_user.id)
+    cancel_fallback_menu_task(callback.from_user.id)
     await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
     await state.clear()
     await callback.message.answer(T.ACTION_CANCELLED)
@@ -1035,8 +1042,33 @@ async def fallback_private(message: Message, state: FSMContext, db: Database) ->
     """Любое сообщение в ЛС без состояния и без более специфичного обработчика — показать главное меню."""
     if not message.from_user:
         return
-    cancel_album_task(message.from_user.id)
-    _, err = await guard_access(db, message.from_user.id)
+    uid = message.from_user.id
+    cancel_album_task(uid)
+    cancel_fallback_menu_task(uid)
+
+    if message.photo and message.media_group_id is not None:
+        bot = message.bot
+        chat_id = message.chat.id
+
+        async def _send_main_menu_after_album() -> None:
+            try:
+                await asyncio.sleep(ALBUM_DEBOUNCE_SECONDS)
+            except asyncio.CancelledError:
+                return
+            _, err = await guard_access(db, uid)
+            if err == "not_bound":
+                await bot.send_message(chat_id, T.NOT_BOUND)
+            elif err == "paused":
+                await bot.send_message(chat_id, T.OBJECT_PAUSED)
+            else:
+                await bot.send_message(
+                    chat_id, T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard()
+                )
+
+        schedule_fallback_menu_task(uid, _send_main_menu_after_album)
+        return
+
+    _, err = await guard_access(db, uid)
     if err == "not_bound":
         return await message.answer(T.NOT_BOUND)
     if err == "paused":
