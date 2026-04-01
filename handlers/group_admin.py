@@ -54,5 +54,6 @@ async def cmd_bind_guard(event: MessageCreated, context: BaseContext, db: Databa
     token = await db.create_bind_token(obj.id)
     from core.config import MAX_BIND_LINK_TEMPLATE
 
-    link = MAX_BIND_LINK_TEMPLATE.format(token=token, username="")
-    await message.reply(text=T.BIND_LINK.format(link=link))
+    command_line = MAX_BIND_LINK_TEMPLATE.format(token=token, username="")
+    await message.reply(text=T.BIND_LINK_INTRO)
+    await message.reply(text=command_line)
