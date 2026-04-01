@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict
 
-from aiogram import BaseMiddleware, Bot
-from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message, TelegramObject
+from maxapi.filters.middleware import BaseMiddleware
 
 from constants import SCENARIO_TIMEOUT_MINUTES
 from core.keyboards import main_menu_keyboard
+from core.max_helpers import send_peer
 from core.states import GuardStates
 import texts_ru as T
 from services.service_menu import clear_service_menu_message
@@ -28,55 +27,56 @@ class ScenarioTimeoutMiddleware(BaseMiddleware):
 
     async def __call__(
         self,
-        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
-        event: TelegramObject,
-        data: Dict[str, Any],
+        handler: Callable[[Any, dict[str, Any]], Awaitable[Any]],
+        event_object: Any,
+        data: dict[str, Any],
     ) -> Any:
-        result = await handler(event, data)
+        result = await handler(event_object, data)
 
-        if isinstance(event, Message) and event.chat.type == "private":
-            uid = event.from_user.id if event.from_user else None
-            if uid:
-                await self._arm_if_scenario(uid, data.get("state"), data)
-        elif isinstance(event, CallbackQuery) and event.message and event.message.chat.type == "private":
-            uid = event.from_user.id if event.from_user else None
-            if uid:
-                await self._arm_if_scenario(uid, data.get("state"), data)
+        context = data.get("context")
+        if context is None:
+            return result
+        uid = getattr(context, "user_id", None)
+        if uid is None:
+            return result
 
-        return result
-
-    async def _arm_if_scenario(self, user_id: int, state: Optional[FSMContext], data: Dict[str, Any]) -> None:
-        if state is None:
-            return
-        st = await state.get_state()
+        st = await context.get_state()
         if st not in {
-            GuardStates.photo_report.state,
-            GuardStates.video_note_report.state,
-            GuardStates.message_report.state,
-            GuardStates.alarm_report.state,
+            GuardStates.photo_report,
+            GuardStates.video_note_report,
+            GuardStates.message_report,
+            GuardStates.alarm_report,
         }:
-            self._cancel(user_id)
-            return
+            self._cancel(uid)
+            return result
 
-        await state.update_data(last_activity_wall=time.time())
-        bot: Bot = data["bot"]
-        chat_id = user_id
-        self._cancel(user_id)
+        await context.update_data(last_activity_wall=time.time())
+        bot = event_object._ensure_bot()
+        chat_id = context.chat_id
+        user_id = context.user_id
+        self._cancel(uid)
 
         async def _fire() -> None:
             try:
                 await asyncio.sleep(SCENARIO_TIMEOUT_MINUTES * 60)
-                cur = await state.get_state()
+                cur = await context.get_state()
                 if cur != st:
                     return
-                d = await state.get_data()
+                d = await context.get_data()
                 if time.time() - float(d.get("last_activity_wall", 0)) < SCENARIO_TIMEOUT_MINUTES * 60:
                     return
-                await clear_service_menu_message(bot, chat_id, state)
-                await state.clear()
-                await bot.send_message(chat_id, T.SCENARIO_TIMEOUT)
-                await bot.send_message(chat_id, T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+                await clear_service_menu_message(bot, chat_id, user_id, context)
+                await context.clear()
+                await send_peer(bot, chat_id=chat_id, user_id=user_id, text=T.SCENARIO_TIMEOUT)
+                await send_peer(
+                    bot,
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    text=T.BOT_DESCRIPTION,
+                    attachments=[main_menu_keyboard()],
+                )
             except asyncio.CancelledError:
                 return
 
-        self._tasks[user_id] = asyncio.create_task(_fire())
+        self._tasks[uid] = asyncio.create_task(_fire())
+        return result

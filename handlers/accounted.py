@@ -1,48 +1,51 @@
-from aiogram import F, Router
-from aiogram.types import CallbackQuery
+from maxapi import F, Router
+from maxapi.types.updates.message_callback import MessageCallback
 
 import texts_ru as T
+from core.utils import is_bot_admin, max_group_message_ref
 from db.database import Database
 from services import sheets
-from core.utils import is_bot_admin, telegram_group_message_link
 
-router = Router(name="accounted")
+router = Router(router_id="accounted")
 
 
-@router.callback_query(F.data.startswith("a:"))
-async def accounted_click(callback: CallbackQuery, db: Database) -> None:
-    if not callback.from_user or not callback.message:
-        return await callback.answer()
+@router.message_callback(F.callback.payload.startswith("a:"))
+async def accounted_click(event: MessageCallback, context, db: Database) -> None:
+    cb = event.callback
+    msg = event.message
+    if msg is None or msg.body is None:
+        return await cb.answer(notification="")
     try:
-        ref_id = int(callback.data[2:])
+        ref_id = int((cb.payload or "")[2:])
     except ValueError:
-        return await callback.answer()
+        return await cb.answer(notification="")
     pair = await db.get_group_post_ref(ref_id)
     if not pair:
-        return await callback.answer("Нет данных", show_alert=True)
-    group_chat_id, message_id = pair
-    if callback.message.chat.id != group_chat_id:
-        return await callback.answer()
-    if not is_bot_admin(callback.from_user.id):
-        return await callback.answer(T.BOT_ADMIN_ONLY, show_alert=True)
+        return await cb.answer(notification="Нет данных")
+    group_chat_id, message_mid = pair
+    r = msg.recipient
+    if r.chat_id != group_chat_id:
+        return await cb.answer(notification="")
+    if not is_bot_admin(cb.user.user_id):
+        return await cb.answer(notification=T.BOT_ADMIN_ONLY)
+
+    bot = event._ensure_bot()
     try:
-        await callback.bot.unpin_chat_message(group_chat_id, message_id)
+        await bot.delete_pin_message(group_chat_id)
     except Exception:
         pass
     try:
-        await callback.bot.edit_message_reply_markup(
-            chat_id=group_chat_id,
-            message_id=message_id,
-            reply_markup=None,
-        )
+        gm = await bot.get_message(message_mid)
+        await gm.edit(text=gm.body.text if gm.body else ".", attachments=[])
     except Exception:
         pass
+
     obj = await db.get_object_by_group(group_chat_id)
     if obj:
-        who = f"id:{callback.from_user.id}"
-        if callback.from_user.username:
-            who += f" @{callback.from_user.username}"
-        link = telegram_group_message_link(group_chat_id, message_id)
+        who = f"id:{cb.user.user_id}"
+        if cb.user.username:
+            who += f" @{cb.user.username}"
+        link = max_group_message_ref(group_chat_id, message_mid)
         await sheets.log_event(
             obj.sheet_title,
             "Учтено",
@@ -51,4 +54,4 @@ async def accounted_click(callback: CallbackQuery, db: Database) -> None:
             "",
             accounted_by=who,
         )
-    await callback.answer(T.ACCOUNTED_DONE)
+    await cb.answer(notification=T.ACCOUNTED_DONE)

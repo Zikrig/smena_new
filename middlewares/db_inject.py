@@ -1,7 +1,6 @@
 from typing import Any, Awaitable, Callable
 
-from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject
+from maxapi.filters.middleware import BaseMiddleware
 
 from db.database import Database
 
@@ -12,9 +11,9 @@ class DbInjectMiddleware(BaseMiddleware):
 
     async def __call__(
         self,
-        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
-        event: TelegramObject,
+        handler: Callable[[Any, dict[str, Any]], Awaitable[Any]],
+        event_object: Any,
         data: dict[str, Any],
     ) -> Any:
         data["db"] = self._db
-        return await handler(event, data)
+        return await handler(event_object, data)

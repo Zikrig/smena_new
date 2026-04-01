@@ -1,4 +1,5 @@
-aiogram>=3.22,<4
+maxapi>=0.9.18
+aiohttp>=3.9
 aiosqlite>=0.20
 python-dotenv>=1.0
 gspread>=6.0

@@ -19,7 +19,14 @@ def _parse_admin_ids(raw: str) -> list[int]:
     return out
 
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+# MAX Bot API (https://dev.max.ru); токен из MAX Business → Чат-боты → Интеграция
+MAX_BOT_TOKEN = os.getenv("MAX_BOT_TOKEN", os.getenv("BOT_TOKEN", ""))
+
+# Ссылка для привязки охранника: шаблон с {token} (и опционально {username} бота)
+MAX_BIND_LINK_TEMPLATE = os.getenv(
+    "MAX_BIND_LINK_TEMPLATE",
+    "Откройте диалог с ботом и отправьте команду: /start bind_{token}",
+)
 DATABASE_PATH = os.getenv(
     "DATABASE_PATH",
     str(ROOT / "guard_bot.db"),

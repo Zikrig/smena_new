@@ -11,8 +11,8 @@ ALBUM_DEBOUNCE_SECONDS = 4
 SOFT_PHOTO_LIMIT = 10
 HARD_PHOTO_LIMIT = 20
 
-# Ограничение Bot API: в одном send_media_group не больше 10 элементов.
-TELEGRAM_MEDIA_GROUP_MAX = 10
+# Пакетная отправка фото в группу (лимит платформы / разумный батч).
+MEDIA_GROUP_CHUNK_MAX = 10
 
 # Пауза между подряд идущими альбомами в один чат (снижает flood control).
 SECONDS_BETWEEN_MEDIA_GROUPS = 1.2

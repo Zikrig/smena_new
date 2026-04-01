@@ -1,4 +1,4 @@
-from aiogram.fsm.state import State, StatesGroup
+from maxapi.context.state_machine import State, StatesGroup
 
 
 class GuardStates(StatesGroup):

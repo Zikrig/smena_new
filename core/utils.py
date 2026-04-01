@@ -5,8 +5,6 @@ def is_bot_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
 
-def telegram_group_message_link(chat_id: int, message_id: int) -> str:
-    s = str(chat_id)
-    if s.startswith("-100"):
-        return f"https://t.me/c/{s[4:]}/{message_id}"
-    return f"{chat_id}/{message_id}"
+def max_group_message_ref(chat_id: int, message_mid: str) -> str:
+    """Ссылка/идентификатор сообщения в группе MAX для логов (не публичный URL)."""
+    return f"max:chat:{chat_id}:msg:{message_mid}"

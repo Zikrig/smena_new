@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS bind_tokens (
 CREATE TABLE IF NOT EXISTS group_post_refs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     group_chat_id INTEGER NOT NULL,
-    message_id INTEGER NOT NULL
+    message_id TEXT NOT NULL DEFAULT ''
 );
 """
 
@@ -62,9 +62,43 @@ class Database:
             await self._db.commit()
         except aiosqlite.OperationalError:
             pass
+        await self._migrate_group_post_refs_message_id()
 
     async def close(self) -> None:
         await self._db.close()
+
+    async def _migrate_group_post_refs_message_id(self) -> None:
+        """Старые БД: message_id был INTEGER (Telegram); для MAX нужны строковые mid."""
+        try:
+            cur = await self._db.execute("PRAGMA table_info(group_post_refs)")
+            rows = await cur.fetchall()
+        except aiosqlite.OperationalError:
+            return
+        col = next((r for r in rows if r[1] == "message_id"), None)
+        if not col:
+            return
+        # col[2] = declared type
+        if str(col[2]).upper() == "INTEGER":
+            await self._db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS _gpr_mig (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    group_chat_id INTEGER NOT NULL,
+                    message_id TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
+            await self._db.execute(
+                """
+                INSERT INTO _gpr_mig (id, group_chat_id, message_id)
+                SELECT id, group_chat_id,
+                    CASE message_id WHEN 0 THEN '' ELSE CAST(message_id AS TEXT) END
+                FROM group_post_refs
+                """
+            )
+            await self._db.execute("DROP TABLE group_post_refs")
+            await self._db.execute("ALTER TABLE _gpr_mig RENAME TO group_post_refs")
+            await self._db.commit()
 
     @staticmethod
     def _slug_sheet_title(name: str, chat_id: int) -> str:
@@ -200,10 +234,10 @@ class Database:
         await self._db.commit()
         return int(row["object_id"])
 
-    async def add_group_post_ref(self, group_chat_id: int, message_id: int) -> int:
+    async def add_group_post_ref(self, group_chat_id: int, message_mid: str) -> int:
         await self._db.execute(
             "INSERT INTO group_post_refs (group_chat_id, message_id) VALUES (?, ?)",
-            (group_chat_id, message_id),
+            (group_chat_id, message_mid),
         )
         await self._db.commit()
         cur = await self._db.execute("SELECT last_insert_rowid()")
@@ -212,7 +246,7 @@ class Database:
 
     async def create_group_post_ref_pending(self, group_chat_id: int) -> int:
         await self._db.execute(
-            "INSERT INTO group_post_refs (group_chat_id, message_id) VALUES (?, 0)",
+            "INSERT INTO group_post_refs (group_chat_id, message_id) VALUES (?, '')",
             (group_chat_id,),
         )
         await self._db.commit()
@@ -220,14 +254,14 @@ class Database:
         row = await cur.fetchone()
         return int(row[0])
 
-    async def finalize_group_post_ref(self, ref_id: int, message_id: int) -> None:
+    async def finalize_group_post_ref(self, ref_id: int, message_mid: str) -> None:
         await self._db.execute(
             "UPDATE group_post_refs SET message_id = ? WHERE id = ?",
-            (message_id, ref_id),
+            (message_mid, ref_id),
         )
         await self._db.commit()
 
-    async def get_group_post_ref(self, ref_id: int) -> Optional[tuple[int, int]]:
+    async def get_group_post_ref(self, ref_id: int) -> Optional[tuple[int, str]]:
         cur = await self._db.execute(
             "SELECT group_chat_id, message_id FROM group_post_refs WHERE id = ?",
             (ref_id,),
@@ -235,7 +269,8 @@ class Database:
         row = await cur.fetchone()
         if not row:
             return None
-        mid = int(row["message_id"])
-        if mid == 0:
+        mid = row["message_id"]
+        s = str(mid).strip() if mid is not None else ""
+        if not s or s == "0":
             return None
-        return int(row["group_chat_id"]), mid
+        return int(row["group_chat_id"]), s
