@@ -260,9 +260,9 @@ async def _main_menu_from_callback(
     cb = event.callback
     msg = event.message
     if msg is None or msg.recipient.chat_type != ChatType.DIALOG:
-        await cb.answer(notification="")
+        await event.answer(notification="")
         return False
-    await cb.answer(notification="")
+    await event.answer(notification="")
     _, err = await guard_access(db, cb.user.user_id)
     if err == "not_bound":
         await msg.answer(text=T.NOT_BOUND)
@@ -775,7 +775,7 @@ async def alarm_collect(event: MessageCreated, context: BaseContext) -> None:
 @router.message_callback(F.callback.payload == "svc_cancel", states=_GUARD_STATES)
 async def svc_cancel(event: MessageCallback, context: BaseContext) -> None:
     cb = event.callback
-    await cb.answer(notification="")
+    await event.answer(notification="")
     cancel_album_task(cb.user.user_id)
     cancel_fallback_menu_task(cb.user.user_id)
     msg = event.message
@@ -838,7 +838,7 @@ async def svc_send_photo(event: MessageCallback, context: BaseContext, db: Datab
     cb = event.callback
     msg = event.message
     if msg is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     uid = cb.user.user_id
     cancel_album_task(uid)
     data = await context.get_data()
@@ -851,7 +851,7 @@ async def svc_send_photo(event: MessageCallback, context: BaseContext, db: Datab
         entries = list(data.get("photo_entries") or [])
     if not entries:
         await send_explaining(bot, r.chat_id, r.user_id, "Нет фото для отправки.")
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
 
     kind = ReportKind(data["report_kind"])
     obj, err = await guard_access(db, uid)
@@ -862,9 +862,9 @@ async def svc_send_photo(event: MessageCallback, context: BaseContext, db: Datab
             r.user_id,
             T.OBJECT_PAUSED if err == "paused" else T.NOT_BOUND,
         )
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
 
-    await cb.answer(notification="")
+    await event.answer(notification="")
     await msg.answer(text=T.REPORT_SENDING)
 
     try:
@@ -898,12 +898,12 @@ async def svc_send_video(event: MessageCallback, context: BaseContext, db: Datab
     cb = event.callback
     msg = event.message
     if msg is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     data = await context.get_data()
     ids: List[str] = list(data.get("video_msg_ids") or [])
     if not ids:
         await send_explaining(msg.bot, msg.recipient.chat_id, msg.recipient.user_id, "Нет видео для отправки.")
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     kind = ReportKind(data["report_kind"])
     obj, err = await guard_access(db, cb.user.user_id)
     r = msg.recipient
@@ -915,9 +915,9 @@ async def svc_send_video(event: MessageCallback, context: BaseContext, db: Datab
             r.user_id,
             T.OBJECT_PAUSED if err == "paused" else T.NOT_BOUND,
         )
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
 
-    await cb.answer(notification="")
+    await event.answer(notification="")
     await msg.answer(text=T.REPORT_SENDING)
 
     try:
@@ -957,7 +957,7 @@ async def svc_send_message(event: MessageCallback, context: BaseContext, db: Dat
     cb = event.callback
     msg = event.message
     if msg is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     uid = cb.user.user_id
     cancel_album_task(uid)
     data = await context.get_data()
@@ -983,9 +983,9 @@ async def svc_send_message(event: MessageCallback, context: BaseContext, db: Dat
             r.user_id,
             T.OBJECT_PAUSED if err == "paused" else T.NOT_BOUND,
         )
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
 
-    await cb.answer(notification="")
+    await event.answer(notification="")
     await msg.answer(text=T.REPORT_SENDING)
 
     try:
@@ -1076,12 +1076,12 @@ async def svc_send_alarm(event: MessageCallback, context: BaseContext, db: Datab
     cb = event.callback
     msg = event.message
     if msg is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     data = await context.get_data()
     ids: List[str] = list(data.get("alarm_msg_ids") or [])
     if not ids:
         await send_explaining(msg.bot, msg.recipient.chat_id, msg.recipient.user_id, "Нет сообщений для тревоги.")
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     obj, err = await guard_access(db, cb.user.user_id)
     r = msg.recipient
     bot = msg.bot
@@ -1092,9 +1092,9 @@ async def svc_send_alarm(event: MessageCallback, context: BaseContext, db: Datab
             r.user_id,
             T.OBJECT_PAUSED if err == "paused" else T.NOT_BOUND,
         )
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
 
-    await cb.answer(notification="")
+    await event.answer(notification="")
     await msg.answer(text=T.REPORT_SENDING)
 
     try:

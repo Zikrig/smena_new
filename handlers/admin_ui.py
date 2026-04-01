@@ -135,15 +135,15 @@ async def cb_main(event: MessageCallback, context: BaseContext) -> None:
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     if not is_bot_admin(cb.user.user_id):
-        return await cb.answer(notification=T.BOT_ADMIN_DENIED)
+        return await event.answer(notification=T.BOT_ADMIN_DENIED)
     await context.clear()
     await msg.edit(
         text="Админ-панель бота. Выберите раздел:",
         attachments=[_main_kb().as_markup()],
     )
-    await cb.answer(notification="")
+    await event.answer(notification="")
 
 
 @router.message_callback(F.callback.payload.startswith("adm:gr:"))
@@ -151,9 +151,9 @@ async def cb_groups(event: MessageCallback, context: BaseContext, db: Database) 
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     if not is_bot_admin(cb.user.user_id):
-        return await cb.answer(notification=T.BOT_ADMIN_DENIED)
+        return await event.answer(notification=T.BOT_ADMIN_DENIED)
     page = int((cb.payload or "").split(":")[-1])
     objs = await db.list_objects()
     if not objs:
@@ -161,7 +161,7 @@ async def cb_groups(event: MessageCallback, context: BaseContext, db: Database) 
     else:
         text = f"Группы (стр. {page + 1}): нажмите для деталей."
     await msg.edit(text=text, attachments=[_groups_kb(objs, page).as_markup()])
-    await cb.answer(notification="")
+    await event.answer(notification="")
 
 
 @router.message_callback(F.callback.payload.startswith("adm:g:"))
@@ -169,13 +169,13 @@ async def cb_group_detail(event: MessageCallback, context: BaseContext, db: Data
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     if not is_bot_admin(cb.user.user_id):
-        return await cb.answer(notification=T.BOT_ADMIN_DENIED)
+        return await event.answer(notification=T.BOT_ADMIN_DENIED)
     oid = int((cb.payload or "").split(":")[-1])
     o = await db.get_object_by_id(oid)
     if not o:
-        return await cb.answer(notification="Нет объекта")
+        return await event.answer(notification="Нет объекта")
     st = "на паузе" if o.is_paused else "активен"
     text = (
         f"<b>{o.name}</b>\n"
@@ -188,7 +188,7 @@ async def cb_group_detail(event: MessageCallback, context: BaseContext, db: Data
         attachments=[_group_detail_kb(o).as_markup()],
         parse_mode=ParseMode.HTML,
     )
-    await cb.answer(notification="")
+    await event.answer(notification="")
 
 
 @router.message_callback(F.callback.payload.startswith("adm:dc:"))
@@ -196,18 +196,18 @@ async def cb_group_del_confirm(event: MessageCallback, context: BaseContext, db:
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     if not is_bot_admin(cb.user.user_id):
-        return await cb.answer(notification=T.BOT_ADMIN_DENIED)
+        return await event.answer(notification=T.BOT_ADMIN_DENIED)
     oid = int((cb.payload or "").split(":")[-1])
     o = await db.get_object_by_id(oid)
     if not o:
-        return await cb.answer(notification="Нет объекта")
+        return await event.answer(notification="Нет объекта")
     await msg.edit(
         text=f"Удалить объект «{o.name}» и все привязки охранников к нему?",
         attachments=[_confirm_del_kb(oid).as_markup()],
     )
-    await cb.answer(notification="")
+    await event.answer(notification="")
 
 
 @router.message_callback(F.callback.payload.startswith("adm:ps:"))
@@ -217,15 +217,15 @@ async def cb_group_actions(event: MessageCallback, context: BaseContext, db: Dat
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     if not is_bot_admin(cb.user.user_id):
-        return await cb.answer(notification=T.BOT_ADMIN_DENIED)
+        return await event.answer(notification=T.BOT_ADMIN_DENIED)
     parts = (cb.payload or "").split(":")
     action, oid_s = parts[1], parts[2]
     oid = int(oid_s)
     o = await db.get_object_by_id(oid)
     if not o:
-        return await cb.answer(notification="Нет объекта")
+        return await event.answer(notification="Нет объекта")
     if action == "ps":
         await db.set_object_paused(oid, True)
     elif action == "up":
@@ -236,7 +236,7 @@ async def cb_group_actions(event: MessageCallback, context: BaseContext, db: Dat
             text="Объект удалён.",
             attachments=[_main_kb().as_markup()],
         )
-        await cb.answer(notification="")
+        await event.answer(notification="")
         return
     o = await db.get_object_by_id(oid)
     assert o
@@ -252,7 +252,7 @@ async def cb_group_actions(event: MessageCallback, context: BaseContext, db: Dat
         attachments=[_group_detail_kb(o).as_markup()],
         parse_mode=ParseMode.HTML,
     )
-    await cb.answer(notification="Готово")
+    await event.answer(notification="Готово")
 
 
 @router.message_callback(F.callback.payload.startswith("adm:us:"))
@@ -260,9 +260,9 @@ async def cb_users(event: MessageCallback, context: BaseContext, db: Database) -
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     if not is_bot_admin(cb.user.user_id):
-        return await cb.answer(notification=T.BOT_ADMIN_DENIED)
+        return await event.answer(notification=T.BOT_ADMIN_DENIED)
     page = int((cb.payload or "").split(":")[-1])
     rows = await db.list_guards()
     if not rows:
@@ -270,7 +270,7 @@ async def cb_users(event: MessageCallback, context: BaseContext, db: Database) -
     else:
         text = f"Охранники (стр. {page + 1}). Нажмите, чтобы снять привязку."
     await msg.edit(text=text, attachments=[_users_kb(rows, page).as_markup()])
-    await cb.answer(notification="")
+    await event.answer(notification="")
 
 
 @router.message_callback(F.callback.payload.startswith("adm:rm:"))
@@ -278,12 +278,12 @@ async def cb_remove_guard(event: MessageCallback, context: BaseContext, db: Data
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     if not is_bot_admin(cb.user.user_id):
-        return await cb.answer(notification=T.BOT_ADMIN_DENIED)
+        return await event.answer(notification=T.BOT_ADMIN_DENIED)
     uid = int((cb.payload or "").split(":")[-1])
     ok = await db.remove_guard(uid)
-    await cb.answer(notification="Снято" if ok else "Не найден")
+    await event.answer(notification="Снято" if ok else "Не найден")
     rows = await db.list_guards()
     page = 0
     text = "Охранники." if rows else "Список пуст."
@@ -295,17 +295,17 @@ async def cb_add_guard_pick(event: MessageCallback, context: BaseContext, db: Da
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     if not is_bot_admin(cb.user.user_id):
-        return await cb.answer(notification=T.BOT_ADMIN_DENIED)
+        return await event.answer(notification=T.BOT_ADMIN_DENIED)
     objs = await db.list_objects()
     if not objs:
-        return await cb.answer(notification="Сначала создайте объект.")
+        return await event.answer(notification="Сначала создайте объект.")
     await msg.edit(
         text="Выберите объект, к которому привязать охранника:",
         attachments=[_pick_object_kb(objs, "adm:bd:").as_markup()],
     )
-    await cb.answer(notification="")
+    await event.answer(notification="")
 
 
 @router.message_callback(F.callback.payload.startswith("adm:bd:"))
@@ -313,9 +313,9 @@ async def cb_add_guard_object(event: MessageCallback, context: BaseContext) -> N
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     if not is_bot_admin(cb.user.user_id):
-        return await cb.answer(notification=T.BOT_ADMIN_DENIED)
+        return await event.answer(notification=T.BOT_ADMIN_DENIED)
     oid = int((cb.payload or "").split(":")[-1])
     await context.set_state(AdminStates.wait_guard_user_id)
     await context.update_data(admin_bind_object_id=oid)
@@ -323,7 +323,7 @@ async def cb_add_guard_object(event: MessageCallback, context: BaseContext) -> N
         text="Отправьте числовой user id охранника в MAX (только цифры, одним сообщением).\n"
         "Отмена: /cancel",
     )
-    await cb.answer(notification="")
+    await event.answer(notification="")
 
 
 @router.message_created(AdminStates.wait_guard_user_id, BodyTextDigits())
@@ -360,16 +360,16 @@ async def cb_new_group(event: MessageCallback, context: BaseContext) -> None:
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     if not is_bot_admin(cb.user.user_id):
-        return await cb.answer(notification=T.BOT_ADMIN_DENIED)
+        return await event.answer(notification=T.BOT_ADMIN_DENIED)
     await context.set_state(AdminStates.wait_group_chat_id)
     await msg.edit(
         text="Отправьте id группового чата в MAX (целое число).\n"
         "/cancel — отмена.",
         parse_mode=ParseMode.HTML,
     )
-    await cb.answer(notification="")
+    await event.answer(notification="")
 
 
 @router.message_created(AdminStates.wait_group_chat_id, BodyTextAny())

@@ -15,20 +15,20 @@ async def accounted_click(event: MessageCallback, context: BaseContext, db: Data
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     try:
         ref_id = int((cb.payload or "")[2:])
     except ValueError:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     pair = await db.get_group_post_ref(ref_id)
     if not pair:
-        return await cb.answer(notification="Нет данных")
+        return await event.answer(notification="Нет данных")
     group_chat_id, message_mid = pair
     r = msg.recipient
     if r.chat_id != group_chat_id:
-        return await cb.answer(notification="")
+        return await event.answer(notification="")
     if not is_bot_admin(cb.user.user_id):
-        return await cb.answer(notification=T.BOT_ADMIN_ONLY)
+        return await event.answer(notification=T.BOT_ADMIN_ONLY)
 
     bot = event._ensure_bot()
     try:
@@ -55,4 +55,4 @@ async def accounted_click(event: MessageCallback, context: BaseContext, db: Data
             "",
             accounted_by=who,
         )
-    await cb.answer(notification=T.ACCOUNTED_DONE)
+    await event.answer(notification=T.ACCOUNTED_DONE)
