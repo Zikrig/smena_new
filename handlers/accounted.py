@@ -1,4 +1,5 @@
 from maxapi import F, Router
+from maxapi.context.base import BaseContext
 from maxapi.types.updates.message_callback import MessageCallback
 
 import texts_ru as T
@@ -10,7 +11,7 @@ router = Router(router_id="accounted")
 
 
 @router.message_callback(F.callback.payload.startswith("a:"))
-async def accounted_click(event: MessageCallback, context, db: Database) -> None:
+async def accounted_click(event: MessageCallback, context: BaseContext, db: Database) -> None:
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:

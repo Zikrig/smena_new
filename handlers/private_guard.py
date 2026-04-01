@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any, List, Optional
 
 from maxapi import F, Router
+from maxapi.context.base import BaseContext
 from maxapi.enums.message_link_type import MessageLinkType
 from maxapi.enums.parse_mode import ParseMode
 from maxapi.exceptions.max import MaxApiError
@@ -71,7 +72,7 @@ async def _pin_report_message(bot, chat_id: int, message_mid_s: str) -> None:
 
 
 async def _recover_from_group_send_error(
-    event: MessageCallback, context, exc: Exception
+    event: MessageCallback, context: BaseContext, exc: Exception
 ) -> None:
     _log.warning("Отправка в группу объекта не удалась: %s", exc)
     msg = event.message
@@ -114,7 +115,7 @@ def _base_photo_data(kind: ReportKind, message) -> dict:
     }
 
 
-async def _start_bind(message, context, token: str, db: Database) -> None:
+async def _start_bind(message, context: BaseContext, token: str, db: Database) -> None:
     object_id = await db.consume_bind_token(token)
     su = message.sender.user_id if message.sender else None
     if not object_id or su is None:
@@ -128,7 +129,9 @@ async def _start_bind(message, context, token: str, db: Database) -> None:
 
 
 @router.message_created(CommandStart(), IsDialog())
-async def cmd_start(event: MessageCreated, context, db: Database, args: list[str]) -> None:
+async def cmd_start(
+    event: MessageCreated, context: BaseContext, db: Database, args: list[str]
+) -> None:
     message = event.message
     su = message.sender.user_id if message.sender else None
     if su is None:
@@ -147,7 +150,7 @@ async def cmd_start(event: MessageCreated, context, db: Database, args: list[str
     await message.answer(text=T.BOT_DESCRIPTION, attachments=[main_menu_keyboard()])
 
 
-async def _enter_photo_scenario(message, context, kind: ReportKind) -> None:
+async def _enter_photo_scenario(message, context: BaseContext, kind: ReportKind) -> None:
     await hide_inline_keyboard(message)
     await context.clear()
     su = message.sender.user_id if message.sender else None
@@ -169,7 +172,7 @@ async def _enter_photo_scenario(message, context, kind: ReportKind) -> None:
     )
 
 
-async def _enter_video_scenario(message, context, kind: ReportKind) -> None:
+async def _enter_video_scenario(message, context: BaseContext, kind: ReportKind) -> None:
     await hide_inline_keyboard(message)
     await context.clear()
     su = message.sender.user_id if message.sender else None
@@ -195,7 +198,7 @@ async def _enter_video_scenario(message, context, kind: ReportKind) -> None:
     )
 
 
-async def _enter_message_scenario(message, context) -> None:
+async def _enter_message_scenario(message, context: BaseContext) -> None:
     await hide_inline_keyboard(message)
     await context.clear()
     su = message.sender.user_id if message.sender else None
@@ -226,7 +229,7 @@ async def _enter_message_scenario(message, context) -> None:
     )
 
 
-async def _enter_alarm_scenario(message, context) -> None:
+async def _enter_alarm_scenario(message, context: BaseContext) -> None:
     await hide_inline_keyboard(message)
     await context.clear()
     su = message.sender.user_id if message.sender else None
@@ -251,7 +254,9 @@ async def _enter_alarm_scenario(message, context) -> None:
     )
 
 
-async def _main_menu_from_callback(event: MessageCallback, context, db: Database) -> bool:
+async def _main_menu_from_callback(
+    event: MessageCallback, context: BaseContext, db: Database
+) -> bool:
     cb = event.callback
     msg = event.message
     if msg is None or msg.recipient.chat_type != ChatType.DIALOG:
@@ -269,7 +274,7 @@ async def _main_menu_from_callback(event: MessageCallback, context, db: Database
 
 
 @router.message_callback(F.callback.payload == "menu:shift", states=[None])
-async def menu_start_shift(event: MessageCallback, context, db: Database) -> None:
+async def menu_start_shift(event: MessageCallback, context: BaseContext, db: Database) -> None:
     if not await _main_menu_from_callback(event, context, db):
         return
     msg = event.message
@@ -278,7 +283,7 @@ async def menu_start_shift(event: MessageCallback, context, db: Database) -> Non
 
 
 @router.message_callback(F.callback.payload == "menu:post", states=[None])
-async def menu_post_check(event: MessageCallback, context, db: Database) -> None:
+async def menu_post_check(event: MessageCallback, context: BaseContext, db: Database) -> None:
     if not await _main_menu_from_callback(event, context, db):
         return
     msg = event.message
@@ -287,7 +292,7 @@ async def menu_post_check(event: MessageCallback, context, db: Database) -> None
 
 
 @router.message_callback(F.callback.payload == "menu:handover", states=[None])
-async def menu_handover(event: MessageCallback, context, db: Database) -> None:
+async def menu_handover(event: MessageCallback, context: BaseContext, db: Database) -> None:
     if not await _main_menu_from_callback(event, context, db):
         return
     msg = event.message
@@ -296,7 +301,7 @@ async def menu_handover(event: MessageCallback, context, db: Database) -> None:
 
 
 @router.message_callback(F.callback.payload == "menu:patrol", states=[None])
-async def menu_patrol(event: MessageCallback, context, db: Database) -> None:
+async def menu_patrol(event: MessageCallback, context: BaseContext, db: Database) -> None:
     if not await _main_menu_from_callback(event, context, db):
         return
     msg = event.message
@@ -305,7 +310,7 @@ async def menu_patrol(event: MessageCallback, context, db: Database) -> None:
 
 
 @router.message_callback(F.callback.payload == "menu:inspection", states=[None])
-async def menu_inspection(event: MessageCallback, context, db: Database) -> None:
+async def menu_inspection(event: MessageCallback, context: BaseContext, db: Database) -> None:
     if not await _main_menu_from_callback(event, context, db):
         return
     msg = event.message
@@ -314,7 +319,7 @@ async def menu_inspection(event: MessageCallback, context, db: Database) -> None
 
 
 @router.message_callback(F.callback.payload == "menu:message", states=[None])
-async def menu_message(event: MessageCallback, context, db: Database) -> None:
+async def menu_message(event: MessageCallback, context: BaseContext, db: Database) -> None:
     if not await _main_menu_from_callback(event, context, db):
         return
     msg = event.message
@@ -323,7 +328,7 @@ async def menu_message(event: MessageCallback, context, db: Database) -> None:
 
 
 @router.message_callback(F.callback.payload == "menu:alarm", states=[None])
-async def menu_alarm(event: MessageCallback, context, db: Database) -> None:
+async def menu_alarm(event: MessageCallback, context: BaseContext, db: Database) -> None:
     if not await _main_menu_from_callback(event, context, db):
         return
     msg = event.message
@@ -335,7 +340,7 @@ async def _flush_album_to_entries(
     bot,
     chat_id: Optional[int],
     user_id: Optional[int],
-    context,
+    context: BaseContext,
     *,
     show_counter: bool,
     is_message_scenario: bool = False,
@@ -396,7 +401,7 @@ async def _debounce_photo(
     bot,
     chat_id: Optional[int],
     user_id_peer: Optional[int],
-    context,
+    context: BaseContext,
     show_counter: bool,
     is_message_scenario: bool,
 ) -> None:
@@ -412,7 +417,7 @@ async def _debounce_photo(
 
 
 @router.message_created(GuardStates.photo_report, HasImageAttachment())
-async def photo_report_collect(event: MessageCreated, context) -> None:
+async def photo_report_collect(event: MessageCreated, context: BaseContext) -> None:
     message = event.message
     su = message.sender.user_id if message.sender else None
     if su is None:
@@ -498,7 +503,7 @@ async def photo_report_collect(event: MessageCreated, context) -> None:
 
 
 @router.message_created(GuardStates.photo_report)
-async def photo_report_wrong(event: MessageCreated, context) -> None:
+async def photo_report_wrong(event: MessageCreated, context: BaseContext) -> None:
     message = event.message
     r = message.recipient
     bot = message.bot
@@ -515,7 +520,7 @@ async def photo_report_wrong(event: MessageCreated, context) -> None:
 
 
 @router.message_created(GuardStates.video_note_report, HasVideoAttachment())
-async def video_note_collect(event: MessageCreated, context) -> None:
+async def video_note_collect(event: MessageCreated, context: BaseContext) -> None:
     message = event.message
     r = message.recipient
     bot = message.bot
@@ -540,7 +545,7 @@ async def video_note_collect(event: MessageCreated, context) -> None:
 
 
 @router.message_created(GuardStates.video_note_report)
-async def video_note_wrong(event: MessageCreated, context) -> None:
+async def video_note_wrong(event: MessageCreated, context: BaseContext) -> None:
     message = event.message
     r = message.recipient
     bot = message.bot
@@ -561,7 +566,7 @@ async def video_note_wrong(event: MessageCreated, context) -> None:
 
 
 @router.message_created(GuardStates.message_report, HasImageAttachment())
-async def message_scenario_photo(event: MessageCreated, context) -> None:
+async def message_scenario_photo(event: MessageCreated, context: BaseContext) -> None:
     message = event.message
     if HasPhotoCaption()(event):
         r = message.recipient
@@ -653,21 +658,21 @@ async def message_scenario_photo(event: MessageCreated, context) -> None:
 
 
 @router.message_created(GuardStates.message_report, HasVideoAttachment())
-async def message_scenario_video(event: MessageCreated, context) -> None:
+async def message_scenario_video(event: MessageCreated, context: BaseContext) -> None:
     await _message_single_media(event, context, "video")
 
 
 @router.message_created(GuardStates.message_report, HasAudioAttachment())
-async def message_scenario_voice(event: MessageCreated, context) -> None:
+async def message_scenario_voice(event: MessageCreated, context: BaseContext) -> None:
     await _message_single_media(event, context, "voice")
 
 
 @router.message_created(GuardStates.message_report, BodyTextNotCommand())
-async def message_scenario_text(event: MessageCreated, context) -> None:
+async def message_scenario_text(event: MessageCreated, context: BaseContext) -> None:
     await _message_single_media(event, context, "text")
 
 
-async def _message_single_media(event: MessageCreated, context, kind: str) -> None:
+async def _message_single_media(event: MessageCreated, context: BaseContext, kind: str) -> None:
     message = event.message
     r = message.recipient
     bot = message.bot
@@ -725,7 +730,7 @@ async def _message_single_media(event: MessageCreated, context, kind: str) -> No
 
 
 @router.message_created(GuardStates.message_report)
-async def message_scenario_wrong(event: MessageCreated, context) -> None:
+async def message_scenario_wrong(event: MessageCreated, context: BaseContext) -> None:
     message = event.message
     r = message.recipient
     bot = message.bot
@@ -746,7 +751,7 @@ async def message_scenario_wrong(event: MessageCreated, context) -> None:
 
 
 @router.message_created(GuardStates.alarm_report)
-async def alarm_collect(event: MessageCreated, context) -> None:
+async def alarm_collect(event: MessageCreated, context: BaseContext) -> None:
     message = event.message
     mid = message_mid(message)
     if not mid:
@@ -768,7 +773,7 @@ async def alarm_collect(event: MessageCreated, context) -> None:
 
 
 @router.message_callback(F.callback.payload == "svc_cancel", states=_GUARD_STATES)
-async def svc_cancel(event: MessageCallback, context) -> None:
+async def svc_cancel(event: MessageCallback, context: BaseContext) -> None:
     cb = event.callback
     await cb.answer(notification="")
     cancel_album_task(cb.user.user_id)
@@ -829,7 +834,7 @@ async def _send_to_group_and_log(
 
 
 @router.message_callback(F.callback.payload == "svc_send", states=[GuardStates.photo_report])
-async def svc_send_photo(event: MessageCallback, context, db: Database) -> None:
+async def svc_send_photo(event: MessageCallback, context: BaseContext, db: Database) -> None:
     cb = event.callback
     msg = event.message
     if msg is None:
@@ -889,7 +894,7 @@ async def svc_send_photo(event: MessageCallback, context, db: Database) -> None:
 
 
 @router.message_callback(F.callback.payload == "svc_send", states=[GuardStates.video_note_report])
-async def svc_send_video(event: MessageCallback, context, db: Database) -> None:
+async def svc_send_video(event: MessageCallback, context: BaseContext, db: Database) -> None:
     cb = event.callback
     msg = event.message
     if msg is None:
@@ -948,7 +953,7 @@ async def svc_send_video(event: MessageCallback, context, db: Database) -> None:
 
 
 @router.message_callback(F.callback.payload == "svc_send", states=[GuardStates.message_report])
-async def svc_send_message(event: MessageCallback, context, db: Database) -> None:
+async def svc_send_message(event: MessageCallback, context: BaseContext, db: Database) -> None:
     cb = event.callback
     msg = event.message
     if msg is None:
@@ -1067,7 +1072,7 @@ async def svc_send_message(event: MessageCallback, context, db: Database) -> Non
 
 
 @router.message_callback(F.callback.payload == "svc_send", states=[GuardStates.alarm_report])
-async def svc_send_alarm(event: MessageCallback, context, db: Database) -> None:
+async def svc_send_alarm(event: MessageCallback, context: BaseContext, db: Database) -> None:
     cb = event.callback
     msg = event.message
     if msg is None:
@@ -1126,7 +1131,7 @@ async def svc_send_alarm(event: MessageCallback, context, db: Database) -> None:
 
 
 @router.message_created(IsDialog(), states=[None])
-async def fallback_private(event: MessageCreated, context, db: Database) -> None:
+async def fallback_private(event: MessageCreated, context: BaseContext, db: Database) -> None:
     message = event.message
     su = message.sender.user_id if message.sender else None
     if su is None:

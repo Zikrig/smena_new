@@ -1,4 +1,5 @@
 from maxapi import Router
+from maxapi.context.base import BaseContext
 from maxapi.enums.parse_mode import ParseMode
 from maxapi.filters.command import Command
 from maxapi.types.updates.message_created import MessageCreated
@@ -12,7 +13,7 @@ router = Router(router_id="group_admin")
 
 
 @router.message_created(Command("info"), IsGroupChat())
-async def cmd_info(event: MessageCreated, context) -> None:
+async def cmd_info(event: MessageCreated, context: BaseContext) -> None:
     message = event.message
     su = message.sender.user_id if message.sender else None
     if su is None or not is_bot_admin(su):
@@ -21,7 +22,7 @@ async def cmd_info(event: MessageCreated, context) -> None:
 
 
 @router.message_created(Command("set_object"), IsGroupChat())
-async def cmd_set_object(event: MessageCreated, context, db: Database) -> None:
+async def cmd_set_object(event: MessageCreated, context: BaseContext, db: Database) -> None:
     message = event.message
     su = message.sender.user_id if message.sender else None
     if su is None or not is_bot_admin(su):
@@ -39,7 +40,7 @@ async def cmd_set_object(event: MessageCreated, context, db: Database) -> None:
 
 
 @router.message_created(Command("bind_guard"), IsGroupChat())
-async def cmd_bind_guard(event: MessageCreated, context, db: Database) -> None:
+async def cmd_bind_guard(event: MessageCreated, context: BaseContext, db: Database) -> None:
     message = event.message
     su = message.sender.user_id if message.sender else None
     if su is None or not is_bot_admin(su):
