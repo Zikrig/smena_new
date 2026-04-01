@@ -13,6 +13,9 @@ from core.states import GuardStates
 import texts_ru as T
 from services.service_menu import clear_service_menu_message
 
+# State из maxapi не hashable — нельзя класть в set; сравниваем по строковому имени.
+_GUARD_SCENARIO_STATE_NAMES = frozenset(GuardStates.states())
+
 
 class ScenarioTimeoutMiddleware(BaseMiddleware):
     """После обработчика: таймер 15 мин с момента последнего события (ТЗ п.9)."""
@@ -41,12 +44,8 @@ class ScenarioTimeoutMiddleware(BaseMiddleware):
             return result
 
         st = await context.get_state()
-        if st not in {
-            GuardStates.photo_report,
-            GuardStates.video_note_report,
-            GuardStates.message_report,
-            GuardStates.alarm_report,
-        }:
+        st_name = str(st) if st is not None else ""
+        if st_name not in _GUARD_SCENARIO_STATE_NAMES:
             self._cancel(uid)
             return result
 
