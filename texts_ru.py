@@ -1,5 +1,7 @@
 """Тексты интерфейса (ТЗ п.13). Редактируйте здесь."""
 
+from core.config import EMERGENCY_CALL_CONTACTS
+
 BOT_DESCRIPTION = (
     "🛡️ БОТ ПОСТА ОХРАНЫ\n\n"
     "Добро пожаловать! Этот бот предназначен для:\n"
@@ -9,7 +11,7 @@ BOT_DESCRIPTION = (
     "• осмотра\n"
     "• проверки поста\n"
     "• отправки сообщения\n"
-    "• тревоги\n\n"
+    "• вызова экстренных номеров\n\n"
     "Выберите действие:"
 )
 
@@ -38,6 +40,11 @@ SERVICE_MENU_CAPTION = (
 
 SERVICE_MENU_CAPTION_NO_COUNTER = "Сервисное меню\n\nОтправьте материалы или завершите сценарий."
 
+# Дополнение к подписи сервисного меню в сценарии «Сообщение» (пока фото не собираются)
+SERVICE_MENU_MESSAGE_ONE_MEDIA_HINT = (
+    "Текст, голос или видео — только одно сообщение; фото можно несколько."
+)
+
 BTN_SEND_REPORT = "✅ Отправить отчёт"
 BTN_MAIN_MENU = "⛔ Главное меню"
 
@@ -48,12 +55,13 @@ BTN_PATROL = "🚶 Обход"
 BTN_INSPECTION = "🔍 Осмотр"
 BTN_POST_CHECK = "✅ Проверка поста"
 BTN_MESSAGE = "💬 Сообщение"
-BTN_ALARM = "🚨 Тревога"
+BTN_ALARM = "🚨 Вызов"
 
 # Подсказка для сценария «Сообщение» (п.10)
 MESSAGE_SCENARIO_HINT = (
     "Один отчёт — один тип контента (фото, видео, голос или текст). "
-    "Смешивать нельзя; к фото подписи не добавляйте."
+    "Текст, голосовое или видео — только одно сообщение; второе в том же отчёте не примётся. "
+    "Фото можно несколько и альбомами. Смешивать типы нельзя; к фото подписи не добавляйте."
 )
 
 WRONG_CONTENT = "Этот тип контента здесь не принимается: {reason}"
@@ -135,4 +143,16 @@ REPORT_TITLE_PATROL = "Обход"
 REPORT_TITLE_INSPECTION = "Осмотр"
 REPORT_TITLE_POST_CHECK = "Проверка поста"
 REPORT_TITLE_MESSAGE = "Сообщение"
-REPORT_TITLE_ALARM = "Тревога"
+
+
+def format_emergency_call_html() -> str:
+    """Текст кнопки «Вызов»: номера для звонка (HTML), по аналогии со smena_sled."""
+    lines = ["🚨 <b>ВЫЗОВ</b>", ""]
+    for title, number in EMERGENCY_CALL_CONTACTS:
+        lines.append(title)
+        lines.append(f"☎️ {number}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+EMERGENCY_CALL_FOLLOWUP = "Что-нибудь ещё?"

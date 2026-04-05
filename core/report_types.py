@@ -10,7 +10,6 @@ class ReportKind(str, Enum):
     INSPECTION = "inspection"
     POST_CHECK = "post_check"
     MESSAGE = "message"
-    ALARM = "alarm"
 
 
 def report_title(kind: ReportKind) -> str:
@@ -21,7 +20,6 @@ def report_title(kind: ReportKind) -> str:
         ReportKind.INSPECTION: T.REPORT_TITLE_INSPECTION,
         ReportKind.POST_CHECK: T.REPORT_TITLE_POST_CHECK,
         ReportKind.MESSAGE: T.REPORT_TITLE_MESSAGE,
-        ReportKind.ALARM: T.REPORT_TITLE_ALARM,
     }[kind]
 
 
@@ -33,5 +31,4 @@ def emoji_for_kind(kind: ReportKind) -> str:
         ReportKind.INSPECTION: "📸",
         ReportKind.POST_CHECK: "📹",
         ReportKind.MESSAGE: "📸",
-        ReportKind.ALARM: "🚨",
     }.get(kind, "📋")

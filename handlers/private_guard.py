@@ -60,7 +60,6 @@ _GUARD_STATES = [
     GuardStates.photo_report,
     GuardStates.video_note_report,
     GuardStates.message_report,
-    GuardStates.alarm_report,
 ]
 
 
@@ -229,31 +228,6 @@ async def _enter_message_scenario(message, context: BaseContext) -> None:
     )
 
 
-async def _enter_alarm_scenario(message, context: BaseContext) -> None:
-    await hide_inline_keyboard(message)
-    await context.clear()
-    su = message.sender.user_id if message.sender else None
-    if su:
-        cancel_album_task(su)
-        cancel_fallback_menu_task(su)
-    await context.set_state(GuardStates.alarm_report)
-    await context.update_data(
-        report_kind=ReportKind.ALARM.value,
-        alarm_msg_ids=[],
-        **_peer_data(message),
-    )
-    await message.answer(text=T.REPORT_STARTED.format(report_title=report_title(ReportKind.ALARM)))
-    r = message.recipient
-    await refresh_service_menu(
-        message.bot,
-        r.chat_id,
-        r.user_id,
-        context,
-        show_photo_counter=False,
-        photo_count=0,
-    )
-
-
 async def _main_menu_from_callback(
     event: MessageCallback, context: BaseContext, db: Database
 ) -> bool:
@@ -332,8 +306,11 @@ async def menu_alarm(event: MessageCallback, context: BaseContext, db: Database)
     if not await _main_menu_from_callback(event, context, db):
         return
     msg = event.message
-    if msg:
-        await _enter_alarm_scenario(msg, context)
+    if not msg:
+        return
+    await hide_inline_keyboard(msg)
+    await msg.answer(text=T.format_emergency_call_html(), parse_mode=ParseMode.HTML)
+    await msg.answer(text=T.EMERGENCY_CALL_FOLLOWUP, attachments=[main_menu_keyboard()])
 
 
 async def _flush_album_to_entries(
@@ -750,28 +727,6 @@ async def message_scenario_wrong(event: MessageCreated, context: BaseContext) ->
     )
 
 
-@router.message_created(GuardStates.alarm_report)
-async def alarm_collect(event: MessageCreated, context: BaseContext) -> None:
-    message = event.message
-    mid = message_mid(message)
-    if not mid:
-        return
-    r = message.recipient
-    bot = message.bot
-    data = await context.get_data()
-    ids: List[str] = list(data.get("alarm_msg_ids") or [])
-    ids.append(mid)
-    await context.update_data(alarm_msg_ids=ids)
-    await refresh_service_menu(
-        bot,
-        r.chat_id,
-        r.user_id,
-        context,
-        show_photo_counter=False,
-        photo_count=0,
-    )
-
-
 @router.message_callback(F.callback.payload == "svc_cancel", states=_GUARD_STATES)
 async def svc_cancel(event: MessageCallback, context: BaseContext) -> None:
     cb = event.callback
@@ -1062,65 +1017,6 @@ async def svc_send_message(event: MessageCallback, context: BaseContext, db: Dat
             event_type=report_title(ReportKind.MESSAGE),
             link=link,
             comment=f"тип: {locked}",
-        )
-        await clear_service_menu_message(bot, r.chat_id, r.user_id, context)
-        await context.clear()
-        await msg.answer(text=T.REPORT_SENT)
-        await msg.answer(text=T.BOT_DESCRIPTION, attachments=[main_menu_keyboard()])
-    except MaxApiError as e:
-        await _recover_from_group_send_error(event, context, e)
-
-
-@router.message_callback(F.callback.payload == "svc_send", states=[GuardStates.alarm_report])
-async def svc_send_alarm(event: MessageCallback, context: BaseContext, db: Database) -> None:
-    cb = event.callback
-    msg = event.message
-    if msg is None:
-        return await event.answer(notification="")
-    data = await context.get_data()
-    ids: List[str] = list(data.get("alarm_msg_ids") or [])
-    if not ids:
-        await send_explaining(msg.bot, msg.recipient.chat_id, msg.recipient.user_id, "Нет сообщений для тревоги.")
-        return await event.answer(notification="")
-    obj, err = await guard_access(db, cb.user.user_id)
-    r = msg.recipient
-    bot = msg.bot
-    if err:
-        await send_explaining(
-            bot,
-            r.chat_id,
-            r.user_id,
-            T.OBJECT_PAUSED if err == "paused" else T.NOT_BOUND,
-        )
-        return await event.answer(notification="")
-
-    await event.answer(notification="")
-    await msg.answer(text=T.REPORT_SENDING)
-
-    try:
-        first_mid: Optional[str] = None
-        for smid in ids:
-            src = await bot.get_message(smid)
-            m = await src.forward(chat_id=obj.group_chat_id)
-            mid = m.message.body.mid if m and m.message and m.message.body else None
-            if first_mid is None and mid:
-                first_mid = mid
-                cap = format_text_report_caption(ReportKind.ALARM, [datetime.now()])
-                try:
-                    gm = await bot.get_message(mid)
-                    await gm.edit(text=cap, parse_mode=ParseMode.HTML)
-                except Exception:
-                    await bot.send_message(chat_id=obj.group_chat_id, text=cap)
-
-        link = max_group_message_ref(obj.group_chat_id, first_mid or "?")
-        await _send_to_group_and_log(
-            bot,
-            db,
-            cb.user,
-            obj,
-            event_type=report_title(ReportKind.ALARM),
-            link=link,
-            comment=f"сообщений: {len(ids)}",
         )
         await clear_service_menu_message(bot, r.chat_id, r.user_id, context)
         await context.clear()

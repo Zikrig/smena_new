@@ -6,6 +6,7 @@ from maxapi.bot import Bot
 
 import texts_ru as T
 from constants import HARD_PHOTO_LIMIT
+from core.report_types import ReportKind
 from core.keyboards import service_menu_markup
 from core.max_helpers import send_peer
 
@@ -41,6 +42,8 @@ async def refresh_service_menu(
         text = T.SERVICE_MENU_CAPTION.format(count=photo_count, hard_limit=HARD_PHOTO_LIMIT)
     else:
         text = T.SERVICE_MENU_CAPTION_NO_COUNTER
+        if data.get("report_kind") == ReportKind.MESSAGE.value:
+            text = f"{text}\n\n{T.SERVICE_MENU_MESSAGE_ONE_MEDIA_HINT}"
     kb = service_menu_markup(
         show_photo_counter=show_photo_counter,
         photo_count=photo_count,
