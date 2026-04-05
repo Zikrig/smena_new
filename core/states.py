@@ -7,7 +7,6 @@ class GuardStates(StatesGroup):
     photo_report = State()
     video_note_report = State()
     message_report = State()
-    alarm_report = State()
 
 
 class AdminStates(StatesGroup):

@@ -20,6 +20,7 @@ async def refresh_service_menu(
     *,
     show_photo_counter: bool,
     photo_count: int,
+    no_counter_caption: str | None = None,
 ) -> None:
     """Ровно одно сервисное сообщение: удалить старое, создать новое (ТЗ п.7)."""
     data = await state.get_data()
@@ -32,7 +33,7 @@ async def refresh_service_menu(
     if show_photo_counter:
         text = T.SERVICE_MENU_CAPTION.format(count=photo_count, hard_limit=HARD_PHOTO_LIMIT)
     else:
-        text = T.SERVICE_MENU_CAPTION_NO_COUNTER
+        text = no_counter_caption or T.SERVICE_MENU_CAPTION_NO_COUNTER
     msg = await bot.send_message(
         chat_id,
         text,

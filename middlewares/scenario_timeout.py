@@ -53,7 +53,6 @@ class ScenarioTimeoutMiddleware(BaseMiddleware):
             GuardStates.photo_report.state,
             GuardStates.video_note_report.state,
             GuardStates.message_report.state,
-            GuardStates.alarm_report.state,
         }:
             self._cancel(user_id)
             return

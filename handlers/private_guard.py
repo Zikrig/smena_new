@@ -9,7 +9,7 @@ from typing import Any, List, Optional
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.methods import SendMediaGroup
-from aiogram.enums import ChatType
+from aiogram.enums import ChatType, ParseMode
 from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, InputMediaPhoto, Message
@@ -21,6 +21,7 @@ from constants import (
     SOFT_PHOTO_LIMIT,
     TELEGRAM_MEDIA_GROUP_MAX,
 )
+from core.config import EMERGENCY_CONTACTS
 from core.keyboards import accounted_markup, hide_inline_keyboard, main_menu_keyboard
 from core.report_types import ReportKind, report_title
 from core.states import GuardStates
@@ -37,6 +38,17 @@ from services.image_stamp import stamp_datetime_on_photo
 
 router = Router(name="private_guard")
 _log = logging.getLogger(__name__)
+
+
+async def _refresh_message_report_menu(bot, chat_id: int, state: FSMContext) -> None:
+    await refresh_service_menu(
+        bot,
+        chat_id,
+        state,
+        show_photo_counter=False,
+        photo_count=0,
+        no_counter_caption=T.SERVICE_MENU_CAPTION_MESSAGE,
+    )
 
 
 async def _pin_report_message(bot, chat_id: int, message_id: int) -> None:
@@ -169,30 +181,7 @@ async def _enter_message_scenario(message: Message, state: FSMContext) -> None:
     )
     await message.answer(T.REPORT_STARTED.format(report_title=report_title(ReportKind.MESSAGE)))
     await message.answer(T.MESSAGE_SCENARIO_HINT)
-    await refresh_service_menu(
-        message.bot,
-        message.chat.id,
-        state,
-        show_photo_counter=False,
-        photo_count=0,
-    )
-
-
-async def _enter_alarm_scenario(message: Message, state: FSMContext) -> None:
-    await hide_inline_keyboard(message)
-    await state.clear()
-    cancel_album_task(message.from_user.id)
-    cancel_fallback_menu_task(message.from_user.id)
-    await state.set_state(GuardStates.alarm_report)
-    await state.update_data(report_kind=ReportKind.ALARM.value, alarm_msg_ids=[])
-    await message.answer(T.REPORT_STARTED.format(report_title=report_title(ReportKind.ALARM)))
-    await refresh_service_menu(
-        message.bot,
-        message.chat.id,
-        state,
-        show_photo_counter=False,
-        photo_count=0,
-    )
+    await _refresh_message_report_menu(message.bot, message.chat.id, state)
 
 
 async def _main_menu_from_callback(
@@ -259,7 +248,18 @@ async def menu_message(callback: CallbackQuery, state: FSMContext, db: Database)
 async def menu_alarm(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
     if not await _main_menu_from_callback(callback, state, db):
         return
-    await _enter_alarm_scenario(callback.message, state)
+    msg = callback.message
+    if not msg:
+        return
+    text = T.format_alarm_contacts_html(EMERGENCY_CONTACTS)
+    try:
+        if msg.text is not None:
+            await msg.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=None)
+        else:
+            await msg.answer(text, parse_mode=ParseMode.HTML)
+    except TelegramBadRequest:
+        await msg.answer(text, parse_mode=ParseMode.HTML)
+    await msg.answer(T.ALARM_WHAT_ELSE, reply_markup=main_menu_keyboard())
 
 
 async def _flush_album_to_entries(
@@ -276,6 +276,9 @@ async def _flush_album_to_entries(
         await state.update_data(album_buffer=[], album_group_id=None)
         return
     entries: List[dict] = list(data.get("photo_entries") or [])
+    no_counter = (
+        T.SERVICE_MENU_CAPTION_MESSAGE if is_message_scenario and not show_counter else None
+    )
     if len(entries) + len(buf) > HARD_PHOTO_LIMIT:
         can_take = max(0, HARD_PHOTO_LIMIT - len(entries))
         dropped = len(buf) - can_take
@@ -294,6 +297,7 @@ async def _flush_album_to_entries(
             state,
             show_photo_counter=show_counter,
             photo_count=len(entries),
+            no_counter_caption=no_counter,
         )
         return
     entries.extend(buf)
@@ -315,6 +319,7 @@ async def _flush_album_to_entries(
         state,
         show_photo_counter=show_counter,
         photo_count=len(entries),
+        no_counter_caption=no_counter,
     )
 
 
@@ -480,24 +485,12 @@ async def video_note_wrong(message: Message, state: FSMContext) -> None:
 async def message_scenario_photo(message: Message, state: FSMContext) -> None:
     if message.caption:
         await send_explaining(message.bot, message.chat.id, T.PHOTO_CAPTION_FORBIDDEN)
-        return await refresh_service_menu(
-            message.bot,
-            message.chat.id,
-            state,
-            show_photo_counter=False,
-            photo_count=0,
-        )
+        return await _refresh_message_report_menu(message.bot, message.chat.id, state)
     data = await state.get_data()
     locked = data.get("msg_locked_kind")
     if locked and locked != "photo":
         await send_explaining(message.bot, message.chat.id, T.WRONG_CONTENT_MESSAGE_MIX)
-        return await refresh_service_menu(
-            message.bot,
-            message.chat.id,
-            state,
-            show_photo_counter=False,
-            photo_count=0,
-        )
+        return await _refresh_message_report_menu(message.bot, message.chat.id, state)
     await state.update_data(msg_locked_kind="photo")
     uid = message.from_user.id
     mg = message.media_group_id
@@ -520,22 +513,10 @@ async def message_scenario_photo(message: Message, state: FSMContext) -> None:
                 message.chat.id,
                 T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=1),
             )
-            return await refresh_service_menu(
-                message.bot,
-                message.chat.id,
-                state,
-                show_photo_counter=False,
-                photo_count=0,
-            )
+            return await _refresh_message_report_menu(message.bot, message.chat.id, state)
         entries.append(_make_photo_entry(message))
         await state.update_data(photo_entries=entries)
-        return await refresh_service_menu(
-            message.bot,
-            message.chat.id,
-            state,
-            show_photo_counter=False,
-            photo_count=0,
-        )
+        return await _refresh_message_report_menu(message.bot, message.chat.id, state)
 
     gid = str(mg)
     cur_gid = data.get("album_group_id")
@@ -581,23 +562,11 @@ async def _message_single_media(message: Message, state: FSMContext, kind: str, 
     locked = data.get("msg_locked_kind")
     if locked and locked != kind:
         await send_explaining(message.bot, message.chat.id, T.WRONG_CONTENT_MESSAGE_MIX)
-        return await refresh_service_menu(
-            message.bot,
-            message.chat.id,
-            state,
-            show_photo_counter=False,
-            photo_count=0,
-        )
+        return await _refresh_message_report_menu(message.bot, message.chat.id, state)
     if kind == "text":
         if data.get("message_text_body") is not None:
             await send_explaining(message.bot, message.chat.id, T.SECOND_MEDIA_NOT_ALLOWED)
-            return await refresh_service_menu(
-                message.bot,
-                message.chat.id,
-                state,
-                show_photo_counter=False,
-                photo_count=0,
-            )
+            return await _refresh_message_report_menu(message.bot, message.chat.id, state)
         await state.update_data(
             msg_locked_kind=kind,
             message_text_body=message.text,
@@ -606,21 +575,9 @@ async def _message_single_media(message: Message, state: FSMContext, kind: str, 
     else:
         if data.get("single_msg_id") is not None:
             await send_explaining(message.bot, message.chat.id, T.SECOND_MEDIA_NOT_ALLOWED)
-            return await refresh_service_menu(
-                message.bot,
-                message.chat.id,
-                state,
-                show_photo_counter=False,
-                photo_count=0,
-            )
+            return await _refresh_message_report_menu(message.bot, message.chat.id, state)
         await state.update_data(msg_locked_kind=kind, single_msg_id=message.message_id)
-    await refresh_service_menu(
-        message.bot,
-        message.chat.id,
-        state,
-        show_photo_counter=False,
-        photo_count=0,
-    )
+    await _refresh_message_report_menu(message.bot, message.chat.id, state)
 
 
 @router.message(GuardStates.message_report)
@@ -630,28 +587,7 @@ async def message_scenario_wrong(message: Message, state: FSMContext) -> None:
         message.chat.id,
         T.WRONG_CONTENT.format(reason="допустимы текст, фото, одно видео или одно голосовое"),
     )
-    await refresh_service_menu(
-        message.bot,
-        message.chat.id,
-        state,
-        show_photo_counter=False,
-        photo_count=0,
-    )
-
-
-@router.message(GuardStates.alarm_report)
-async def alarm_collect(message: Message, state: FSMContext) -> None:
-    data = await state.get_data()
-    ids: List[int] = list(data.get("alarm_msg_ids") or [])
-    ids.append(message.message_id)
-    await state.update_data(alarm_msg_ids=ids)
-    await refresh_service_menu(
-        message.bot,
-        message.chat.id,
-        state,
-        show_photo_counter=False,
-        photo_count=0,
-    )
+    await _refresh_message_report_menu(message.bot, message.chat.id, state)
 
 
 @router.callback_query(F.data == "svc_cancel", StateFilter(GuardStates))
@@ -969,64 +905,6 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
             event_type=report_title(ReportKind.MESSAGE),
             link=link,
             comment=f"тип: {locked}",
-        )
-
-        await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
-        await state.clear()
-        await callback.message.answer(T.REPORT_SENT)
-        await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
-    except TelegramBadRequest as e:
-        await _recover_from_group_send_error(callback, state, e)
-
-
-@router.callback_query(F.data == "svc_send", GuardStates.alarm_report)
-async def svc_send_alarm(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
-    data = await state.get_data()
-    ids: List[int] = list(data.get("alarm_msg_ids") or [])
-    if not ids:
-        await send_explaining(callback.bot, callback.message.chat.id, "Нет сообщений для тревоги.")
-        return await callback.answer()
-    obj, err = await guard_access(db, callback.from_user.id)
-    if err:
-        await send_explaining(
-            callback.bot,
-            callback.message.chat.id,
-            T.OBJECT_PAUSED if err == "paused" else T.NOT_BOUND,
-        )
-        return await callback.answer()
-
-    await callback.answer()
-    await callback.message.answer(T.REPORT_SENDING)
-
-    try:
-        first_mid: Optional[int] = None
-        for mid in ids:
-            m = await callback.bot.copy_message(
-                chat_id=obj.group_chat_id,
-                from_chat_id=callback.from_user.id,
-                message_id=mid,
-            )
-            if first_mid is None:
-                first_mid = m.message_id
-                cap = format_text_report_caption(ReportKind.ALARM, [datetime.now()])
-                try:
-                    await callback.bot.edit_message_caption(
-                        chat_id=obj.group_chat_id,
-                        message_id=first_mid,
-                        caption=cap,
-                    )
-                except Exception:
-                    await callback.bot.send_message(obj.group_chat_id, cap)
-
-        link = telegram_group_message_link(obj.group_chat_id, first_mid or 0)
-        await _send_to_group_and_log(
-            callback.bot,
-            db,
-            callback.from_user,
-            obj,
-            event_type=report_title(ReportKind.ALARM),
-            link=link,
-            comment=f"сообщений: {len(ids)}",
         )
 
         await clear_service_menu_message(callback.bot, callback.message.chat.id, state)

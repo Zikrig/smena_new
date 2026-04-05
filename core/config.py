@@ -36,3 +36,11 @@ GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv(
 
 # Часовой пояс для подписи отчётов (п.11); по умолчанию локальное время процесса.
 REPORT_TIMEZONE = os.getenv("TZ", "")
+
+# Кнопка «Тревога»: экстренные номера (как «Вызов» в smena_sled). Можно переопределить в .env.
+EMERGENCY_CONTACTS: list[tuple[str, str]] = [
+    ("Телефон экстренных служб", os.getenv("PHONE_EMERGENCY_UNIFIED", "112")),
+    ("Начальник охраны в СПб", os.getenv("PHONE_SECURITY_CHIEF_SPB", "+79213666399")),
+    ("Начальник охраны в ЛО", os.getenv("PHONE_SECURITY_CHIEF_LO", "+79219590313")),
+    ("Начальник ОП «ОРА»", os.getenv("PHONE_SECURITY_CHIEF_ORA", "+79213173079")),
+]
