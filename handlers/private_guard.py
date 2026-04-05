@@ -247,6 +247,51 @@ async def _main_menu_from_callback(
     return True
 
 
+async def _deliver_emergency_contacts(
+    bot,
+    chat_id: Optional[int],
+    user_id: Optional[int],
+    context: BaseContext,
+) -> None:
+    """Показать номера тревоги: из главного меню — с возвратом в меню; в сценарии отчёта — обновить сервисное меню."""
+    await send_peer(
+        bot,
+        chat_id=chat_id,
+        user_id=user_id,
+        text=T.format_emergency_call_html(),
+        parse_mode=ParseMode.HTML,
+    )
+    st = await context.get_state()
+    st_name = str(st) if st is not None else ""
+    data = await context.get_data()
+    if st_name == str(GuardStates.photo_report):
+        await refresh_service_menu(
+            bot,
+            chat_id,
+            user_id,
+            context,
+            show_photo_counter=True,
+            photo_count=len(data.get("photo_entries") or []),
+        )
+    elif st_name in (str(GuardStates.video_note_report), str(GuardStates.message_report)):
+        await refresh_service_menu(
+            bot,
+            chat_id,
+            user_id,
+            context,
+            show_photo_counter=False,
+            photo_count=0,
+        )
+    else:
+        await send_peer(
+            bot,
+            chat_id=chat_id,
+            user_id=user_id,
+            text=T.EMERGENCY_CALL_FOLLOWUP,
+            attachments=[main_menu_keyboard()],
+        )
+
+
 @router.message_callback(F.callback.payload == "menu:shift", states=[None])
 async def menu_start_shift(event: MessageCallback, context: BaseContext, db: Database) -> None:
     if not await _main_menu_from_callback(event, context, db):
@@ -309,8 +354,19 @@ async def menu_alarm(event: MessageCallback, context: BaseContext, db: Database)
     if not msg:
         return
     await hide_inline_keyboard(msg)
-    await msg.answer(text=T.format_emergency_call_html(), parse_mode=ParseMode.HTML)
-    await msg.answer(text=T.EMERGENCY_CALL_FOLLOWUP, attachments=[main_menu_keyboard()])
+    r = msg.recipient
+    await _deliver_emergency_contacts(msg.bot, r.chat_id, r.user_id, context)
+
+
+@router.message_callback(F.callback.payload == "svc:alarm", states=_GUARD_STATES)
+async def svc_alarm(event: MessageCallback, context: BaseContext, db: Database) -> None:
+    if not await _main_menu_from_callback(event, context, db):
+        return
+    msg = event.message
+    if not msg:
+        return
+    r = msg.recipient
+    await _deliver_emergency_contacts(msg.bot, r.chat_id, r.user_id, context)
 
 
 async def _flush_album_to_entries(

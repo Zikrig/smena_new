@@ -36,6 +36,7 @@ def main_menu_keyboard():
 def service_menu_inline(*, show_photo_counter: bool, photo_count: int):
     builder = InlineKeyboardBuilder()
     builder.add(
+        CallbackButton(text=T.BTN_ALARM, payload="svc:alarm"),
         CallbackButton(text=T.BTN_SEND_REPORT, payload="svc_send"),
         CallbackButton(text=T.BTN_MAIN_MENU, payload="svc_cancel"),
     )

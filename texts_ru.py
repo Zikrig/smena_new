@@ -11,7 +11,7 @@ BOT_DESCRIPTION = (
     "• осмотра\n"
     "• проверки поста\n"
     "• отправки сообщения\n"
-    "• вызова экстренных номеров\n\n"
+    "• номеров при тревоге (без фото в группу)\n\n"
     "Выберите действие:"
 )
 
@@ -55,7 +55,7 @@ BTN_PATROL = "🚶 Обход"
 BTN_INSPECTION = "🔍 Осмотр"
 BTN_POST_CHECK = "✅ Проверка поста"
 BTN_MESSAGE = "💬 Сообщение"
-BTN_ALARM = "🚨 Вызов"
+BTN_ALARM = "🚨 Тревога"
 
 # Подсказка для сценария «Сообщение» (п.10)
 MESSAGE_SCENARIO_HINT = (
@@ -146,8 +146,8 @@ REPORT_TITLE_MESSAGE = "Сообщение"
 
 
 def format_emergency_call_html() -> str:
-    """Текст кнопки «Вызов»: номера для звонка (HTML), по аналогии со smena_sled."""
-    lines = ["🚨 <b>ВЫЗОВ</b>", ""]
+    """Текст кнопки «Тревога»: номера для звонка (HTML)."""
+    lines = ["🚨 <b>ТРЕВОГА</b>", ""]
     for title, number in EMERGENCY_CALL_CONTACTS:
         lines.append(title)
         lines.append(f"☎️ {number}")
