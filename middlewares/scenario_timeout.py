@@ -12,7 +12,7 @@ from constants import SCENARIO_TIMEOUT_MINUTES
 from core.keyboards import main_menu_keyboard
 from core.states import GuardStates
 import texts_ru as T
-from services.service_menu import clear_service_menu_message
+from services.service_menu import clear_service_menu_message, delete_bot_message_safe, purge_disposable_messages
 
 
 class ScenarioTimeoutMiddleware(BaseMiddleware):
@@ -71,10 +71,12 @@ class ScenarioTimeoutMiddleware(BaseMiddleware):
                 d = await state.get_data()
                 if time.time() - float(d.get("last_activity_wall", 0)) < SCENARIO_TIMEOUT_MINUTES * 60:
                     return
+                await purge_disposable_messages(bot, chat_id, state)
                 await clear_service_menu_message(bot, chat_id, state)
                 await state.clear()
-                await bot.send_message(chat_id, T.SCENARIO_TIMEOUT)
+                timeout_msg = await bot.send_message(chat_id, T.SCENARIO_TIMEOUT)
                 await bot.send_message(chat_id, T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+                await delete_bot_message_safe(bot, chat_id, timeout_msg.message_id)
             except asyncio.CancelledError:
                 return
 

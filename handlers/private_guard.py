@@ -32,8 +32,14 @@ import texts_ru as T
 from services.album_tasks import cancel_album_task, schedule_album_task
 from services.fallback_menu_tasks import cancel_fallback_menu_task, schedule_fallback_menu_task
 from services.report_build import format_group_caption, format_text_report_caption
-from services.service_menu import refresh_service_menu, send_explaining
-from services.service_menu import clear_service_menu_message
+from services.service_menu import (
+    clear_service_menu_message,
+    delete_bot_message_safe,
+    purge_disposable_messages,
+    refresh_service_menu,
+    register_disposable,
+    send_explaining,
+)
 from services import sheets
 from services.image_stamp import stamp_datetime_on_photo
 
@@ -81,13 +87,14 @@ async def _recover_from_group_send_error(
     callback: CallbackQuery, state: FSMContext, exc: Exception
 ) -> None:
     _log.warning("Отправка в группу объекта не удалась: %s", exc)
+    await purge_disposable_messages(callback.bot, callback.message.chat.id, state)
+    await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+    await state.clear()
     await send_explaining(
         callback.bot,
         callback.message.chat.id,
         T.GROUP_CHAT_UNAVAILABLE,
     )
-    await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
-    await state.clear()
     await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
 
 
@@ -155,7 +162,8 @@ async def _enter_photo_scenario(message: Message, state: FSMContext, kind: Repor
     await state.set_state(GuardStates.photo_report)
     await state.update_data(**_base_photo_data(kind))
     title = report_title(kind)
-    await message.answer(T.REPORT_STARTED.format(report_title=title))
+    started = await message.answer(T.REPORT_STARTED.format(report_title=title))
+    await register_disposable(state, started.message_id)
     photo_hint = {
         ReportKind.HANDOVER: T.PHOTO_SCENARIO_HINT_HANDOVER,
         ReportKind.PATROL: T.PHOTO_SCENARIO_HINT_PATROL,
@@ -167,8 +175,9 @@ async def _enter_photo_scenario(message: Message, state: FSMContext, kind: Repor
         message.bot,
         message.chat.id,
         state,
-        show_photo_counter=True,
+        show_photo_counter=False,
         photo_count=0,
+        no_counter_caption=T.SERVICE_MENU_CAPTION_NO_COUNTER,
     )
 
 
@@ -180,7 +189,8 @@ async def _enter_video_scenario(message: Message, state: FSMContext, kind: Repor
     await state.set_state(GuardStates.video_note_report)
     await state.update_data(report_kind=kind.value, video_msg_ids=[])
     title = report_title(kind)
-    await message.answer(T.REPORT_STARTED.format(report_title=title))
+    started = await message.answer(T.REPORT_STARTED.format(report_title=title))
+    await register_disposable(state, started.message_id)
     video_hint = {
         ReportKind.START_SHIFT: T.VIDEO_SCENARIO_HINT_START_SHIFT,
         ReportKind.POST_CHECK: T.VIDEO_SCENARIO_HINT_POST_CHECK,
@@ -211,7 +221,10 @@ async def _enter_message_scenario(message: Message, state: FSMContext) -> None:
         single_msg_id=None,
         message_text_body=None,
     )
-    await message.answer(T.REPORT_STARTED.format(report_title=report_title(ReportKind.MESSAGE)))
+    started = await message.answer(
+        T.REPORT_STARTED.format(report_title=report_title(ReportKind.MESSAGE))
+    )
+    await register_disposable(state, started.message_id)
     await message.answer(T.MESSAGE_SCENARIO_HINT)
     await _refresh_message_report_menu(message.bot, message.chat.id, state)
 
@@ -327,12 +340,18 @@ async def _flush_album_to_entries(
                 bot,
                 chat_id,
                 T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=dropped),
+                state,
             )
+        menu_show_counter = (
+            show_counter
+            if is_message_scenario
+            else (show_counter and len(entries) > 0)
+        )
         await refresh_service_menu(
             bot,
             chat_id,
             state,
-            show_photo_counter=show_counter,
+            show_photo_counter=menu_show_counter,
             photo_count=len(entries),
             no_counter_caption=no_counter,
         )
@@ -349,12 +368,18 @@ async def _flush_album_to_entries(
             bot,
             chat_id,
             T.SOFT_LIMIT_WARNING.format(n=len(entries), soft=SOFT_PHOTO_LIMIT, hard=HARD_PHOTO_LIMIT),
+            state,
         )
+    menu_show_counter = (
+        show_counter
+        if is_message_scenario
+        else (show_counter and len(entries) > 0)
+    )
     await refresh_service_menu(
         bot,
         chat_id,
         state,
-        show_photo_counter=show_counter,
+        show_photo_counter=menu_show_counter,
         photo_count=len(entries),
         no_counter_caption=no_counter,
     )
@@ -381,12 +406,13 @@ async def photo_report_collect(message: Message, state: FSMContext) -> None:
             message.bot,
             message.chat.id,
             T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=1),
+            state,
         )
         await refresh_service_menu(
             message.bot,
             message.chat.id,
             state,
-            show_photo_counter=True,
+            show_photo_counter=len(entries) > 0,
             photo_count=len(entries),
         )
         return
@@ -401,12 +427,13 @@ async def photo_report_collect(message: Message, state: FSMContext) -> None:
                 message.bot,
                 message.chat.id,
                 T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=1),
+                state,
             )
             await refresh_service_menu(
                 message.bot,
                 message.chat.id,
                 state,
-                show_photo_counter=True,
+                show_photo_counter=len(entries) > 0,
                 photo_count=len(entries),
             )
             return
@@ -422,12 +449,13 @@ async def photo_report_collect(message: Message, state: FSMContext) -> None:
                     soft=SOFT_PHOTO_LIMIT,
                     hard=HARD_PHOTO_LIMIT,
                 ),
+                state,
             )
         await refresh_service_menu(
             message.bot,
             message.chat.id,
             state,
-            show_photo_counter=True,
+            show_photo_counter=len(entries) > 0,
             photo_count=len(entries),
         )
         return
@@ -473,14 +501,17 @@ async def photo_report_wrong(message: Message, state: FSMContext) -> None:
         message.bot,
         message.chat.id,
         T.WRONG_CONTENT.format(reason="нужны только фото"),
+        state,
     )
     data = await state.get_data()
+    entries_wrong = list(data.get("photo_entries") or [])
+    n_wrong = len(entries_wrong)
     await refresh_service_menu(
         message.bot,
         message.chat.id,
         state,
-        show_photo_counter=True,
-        photo_count=len(data.get("photo_entries") or []),
+        show_photo_counter=n_wrong > 0,
+        photo_count=n_wrong,
     )
 
 
@@ -489,7 +520,9 @@ async def video_note_collect(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     ids: List[int] = list(data.get("video_msg_ids") or [])
     if ids:
-        await send_explaining(message.bot, message.chat.id, T.SECOND_MEDIA_NOT_ALLOWED)
+        await send_explaining(
+            message.bot, message.chat.id, T.SECOND_MEDIA_NOT_ALLOWED, state
+        )
     else:
         ids.append(message.message_id)
         await state.update_data(video_msg_ids=ids)
@@ -508,6 +541,7 @@ async def video_note_wrong(message: Message, state: FSMContext) -> None:
         message.bot,
         message.chat.id,
         T.WRONG_CONTENT.format(reason="нужен только видеокружок"),
+        state,
     )
     await refresh_service_menu(
         message.bot,
@@ -521,12 +555,16 @@ async def video_note_wrong(message: Message, state: FSMContext) -> None:
 @router.message(GuardStates.message_report, F.photo)
 async def message_scenario_photo(message: Message, state: FSMContext) -> None:
     if message.caption:
-        await send_explaining(message.bot, message.chat.id, T.PHOTO_CAPTION_FORBIDDEN)
+        await send_explaining(
+            message.bot, message.chat.id, T.PHOTO_CAPTION_FORBIDDEN, state
+        )
         return await _refresh_message_report_menu(message.bot, message.chat.id, state)
     data = await state.get_data()
     locked = data.get("msg_locked_kind")
     if locked and locked != "photo":
-        await send_explaining(message.bot, message.chat.id, T.WRONG_CONTENT_MESSAGE_MIX)
+        await send_explaining(
+            message.bot, message.chat.id, T.WRONG_CONTENT_MESSAGE_MIX, state
+        )
         return await _refresh_message_report_menu(message.bot, message.chat.id, state)
     await state.update_data(msg_locked_kind="photo")
     uid = message.from_user.id
@@ -549,6 +587,7 @@ async def message_scenario_photo(message: Message, state: FSMContext) -> None:
                 message.bot,
                 message.chat.id,
                 T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=1),
+                state,
             )
             return await _refresh_message_report_menu(message.bot, message.chat.id, state)
         entries.append(_make_photo_entry(message))
@@ -598,11 +637,15 @@ async def _message_single_media(message: Message, state: FSMContext, kind: str, 
     data = await state.get_data()
     locked = data.get("msg_locked_kind")
     if locked and locked != kind:
-        await send_explaining(message.bot, message.chat.id, T.WRONG_CONTENT_MESSAGE_MIX)
+        await send_explaining(
+            message.bot, message.chat.id, T.WRONG_CONTENT_MESSAGE_MIX, state
+        )
         return await _refresh_message_report_menu(message.bot, message.chat.id, state)
     if kind == "text":
         if data.get("message_text_body") is not None:
-            await send_explaining(message.bot, message.chat.id, T.SECOND_MEDIA_NOT_ALLOWED)
+            await send_explaining(
+                message.bot, message.chat.id, T.SECOND_MEDIA_NOT_ALLOWED, state
+            )
             return await _refresh_message_report_menu(message.bot, message.chat.id, state)
         await state.update_data(
             msg_locked_kind=kind,
@@ -611,7 +654,9 @@ async def _message_single_media(message: Message, state: FSMContext, kind: str, 
         )
     else:
         if data.get("single_msg_id") is not None:
-            await send_explaining(message.bot, message.chat.id, T.SECOND_MEDIA_NOT_ALLOWED)
+            await send_explaining(
+                message.bot, message.chat.id, T.SECOND_MEDIA_NOT_ALLOWED, state
+            )
             return await _refresh_message_report_menu(message.bot, message.chat.id, state)
         await state.update_data(msg_locked_kind=kind, single_msg_id=message.message_id)
     await _refresh_message_report_menu(message.bot, message.chat.id, state)
@@ -623,6 +668,7 @@ async def message_scenario_wrong(message: Message, state: FSMContext) -> None:
         message.bot,
         message.chat.id,
         T.WRONG_CONTENT.format(reason="допустимы текст, фото, одно видео или одно голосовое"),
+        state,
     )
     await _refresh_message_report_menu(message.bot, message.chat.id, state)
 
@@ -632,10 +678,14 @@ async def svc_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     cancel_album_task(callback.from_user.id)
     cancel_fallback_menu_task(callback.from_user.id)
+    await purge_disposable_messages(callback.bot, callback.message.chat.id, state)
     await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
     await state.clear()
-    await callback.message.answer(T.ACTION_CANCELLED)
+    cancelled = await callback.message.answer(T.ACTION_CANCELLED)
     await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+    await delete_bot_message_safe(
+        callback.bot, callback.message.chat.id, cancelled.message_id
+    )
 
 
 async def _send_media_group_with_flood_retry(
@@ -793,7 +843,12 @@ async def svc_send_photo(callback: CallbackQuery, state: FSMContext, db: Databas
         data = await state.get_data()
         entries = list(data.get("photo_entries") or [])
     if not entries:
-        await send_explaining(callback.bot, callback.message.chat.id, "Нет фото для отправки.")
+        await send_explaining(
+            callback.bot,
+            callback.message.chat.id,
+            "Нет фото для отправки.",
+            state,
+        )
         return await callback.answer()
 
     kind = ReportKind(data["report_kind"])
@@ -803,11 +858,13 @@ async def svc_send_photo(callback: CallbackQuery, state: FSMContext, db: Databas
             callback.bot,
             callback.message.chat.id,
             T.OBJECT_PAUSED if err == "paused" else T.NOT_BOUND,
+            state,
         )
         return await callback.answer()
 
     await callback.answer()
-    await callback.message.answer(T.REPORT_SENDING)
+    sending_msg = await callback.message.answer(T.REPORT_SENDING)
+    await register_disposable(state, sending_msg.message_id)
 
     try:
         caption = format_group_caption(kind, len(entries), [e["dt"] for e in entries])
@@ -829,9 +886,13 @@ async def svc_send_photo(callback: CallbackQuery, state: FSMContext, db: Databas
         )
 
         await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+        await purge_disposable_messages(callback.bot, callback.message.chat.id, state)
         await state.clear()
-        await callback.message.answer(T.REPORT_SENT)
+        sent = await callback.message.answer(T.REPORT_SENT)
         await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+        await delete_bot_message_safe(
+            callback.bot, callback.message.chat.id, sent.message_id
+        )
     except TelegramBadRequest as e:
         await _recover_from_group_send_error(callback, state, e)
 
@@ -841,7 +902,12 @@ async def svc_send_video(callback: CallbackQuery, state: FSMContext, db: Databas
     data = await state.get_data()
     ids: List[int] = list(data.get("video_msg_ids") or [])
     if not ids:
-        await send_explaining(callback.bot, callback.message.chat.id, "Нет видеокружка для отправки.")
+        await send_explaining(
+            callback.bot,
+            callback.message.chat.id,
+            "Нет видеокружка для отправки.",
+            state,
+        )
         return await callback.answer()
     kind = ReportKind(data["report_kind"])
     obj, err = await guard_access(db, callback.from_user.id)
@@ -850,11 +916,13 @@ async def svc_send_video(callback: CallbackQuery, state: FSMContext, db: Databas
             callback.bot,
             callback.message.chat.id,
             T.OBJECT_PAUSED if err == "paused" else T.NOT_BOUND,
+            state,
         )
         return await callback.answer()
 
     await callback.answer()
-    await callback.message.answer(T.REPORT_SENDING)
+    sending_msg = await callback.message.answer(T.REPORT_SENDING)
+    await register_disposable(state, sending_msg.message_id)
 
     try:
         times = [datetime.now()]
@@ -884,9 +952,13 @@ async def svc_send_video(callback: CallbackQuery, state: FSMContext, db: Databas
             comment="видеокружок",
         )
         await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+        await purge_disposable_messages(callback.bot, callback.message.chat.id, state)
         await state.clear()
-        await callback.message.answer(T.REPORT_SENT)
+        sent = await callback.message.answer(T.REPORT_SENT)
         await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+        await delete_bot_message_safe(
+            callback.bot, callback.message.chat.id, sent.message_id
+        )
     except TelegramBadRequest as e:
         await _recover_from_group_send_error(callback, state, e)
 
@@ -913,23 +985,29 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
             callback.bot,
             callback.message.chat.id,
             T.OBJECT_PAUSED if err == "paused" else T.NOT_BOUND,
+            state,
         )
         return await callback.answer()
 
     await callback.answer()
-    await callback.message.answer(T.REPORT_SENDING)
+    chat_id = callback.message.chat.id
+    bot = callback.bot
+    sending_msg = await callback.message.answer(T.REPORT_SENDING)
 
     try:
         if locked == "photo":
             entries = list(data.get("photo_entries") or [])
             if not entries:
-                await send_explaining(callback.bot, callback.message.chat.id, "Нет фото для отправки.")
+                await send_explaining(
+                    bot, chat_id, "Нет фото для отправки.", state
+                )
+                await delete_bot_message_safe(bot, chat_id, sending_msg.message_id)
                 return
             ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
             kb = accounted_markup(f"a:{ref_id}")
             caption = format_text_report_caption(ReportKind.MESSAGE, [e["dt"] for e in entries])
             mid = await _send_photos_in_album_chunks(
-                callback.bot,
+                bot,
                 obj.group_chat_id,
                 entries,
                 caption,
@@ -938,13 +1016,16 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
         elif locked == "text":
             body = data.get("message_text_body")
             if not body:
-                await send_explaining(callback.bot, callback.message.chat.id, "Нет текста для отправки.")
+                await send_explaining(
+                    bot, chat_id, "Нет текста для отправки.", state
+                )
+                await delete_bot_message_safe(bot, chat_id, sending_msg.message_id)
                 return
             ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
             kb = accounted_markup(f"a:{ref_id}")
             header = format_text_report_caption(ReportKind.MESSAGE, [datetime.now()])
             msg = await _send_message_with_flood_retry(
-                callback.bot,
+                bot,
                 obj.group_chat_id,
                 f"{header}\n\n{body}",
                 reply_markup=kb,
@@ -953,12 +1034,15 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
         elif locked in ("video", "voice"):
             smid = data.get("single_msg_id")
             if not smid:
-                await send_explaining(callback.bot, callback.message.chat.id, "Нет содержимого для отправки.")
+                await send_explaining(
+                    bot, chat_id, "Нет содержимого для отправки.", state
+                )
+                await delete_bot_message_safe(bot, chat_id, sending_msg.message_id)
                 return
             ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
             kb = accounted_markup(f"a:{ref_id}")
             msg = await _copy_message_with_flood_retry(
-                callback.bot,
+                bot,
                 obj.group_chat_id,
                 uid,
                 smid,
@@ -975,8 +1059,9 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
                 await _send_message_with_flood_retry(callback.bot, obj.group_chat_id, extra)
         else:
             await send_explaining(
-                callback.bot, callback.message.chat.id, "Сначала отправьте содержимое отчёта."
+                bot, chat_id, "Сначала отправьте содержимое отчёта.", state
             )
+            await delete_bot_message_safe(bot, chat_id, sending_msg.message_id)
             return
 
         await db.finalize_group_post_ref(ref_id, mid)
@@ -994,11 +1079,15 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
             comment=f"тип: {locked}",
         )
 
-        await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+        await register_disposable(state, sending_msg.message_id)
+        await clear_service_menu_message(callback.bot, chat_id, state)
+        await purge_disposable_messages(bot, chat_id, state)
         await state.clear()
-        await callback.message.answer(T.REPORT_SENT)
+        sent = await callback.message.answer(T.REPORT_SENT)
         await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
+        await delete_bot_message_safe(bot, chat_id, sent.message_id)
     except TelegramBadRequest as e:
+        await register_disposable(state, sending_msg.message_id)
         await _recover_from_group_send_error(callback, state, e)
 
 

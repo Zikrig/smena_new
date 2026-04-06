@@ -8,9 +8,39 @@ from constants import HARD_PHOTO_LIMIT
 from core.keyboards import service_menu_markup
 
 
-async def send_explaining(bot: Bot, chat_id: int, text: str) -> None:
-    """Поясняющее сообщение: без кнопок, не удаляется (ТЗ п.8)."""
-    await bot.send_message(chat_id, text)
+async def register_disposable(state: FSMContext, message_id: int) -> None:
+    """ID сообщений бота, которые удаляются при выходе из сценария (не подсказки действий)."""
+    data = await state.get_data()
+    ids: list[int] = list(data.get("disposable_bot_message_ids") or [])
+    ids.append(message_id)
+    await state.update_data(disposable_bot_message_ids=ids)
+
+
+async def purge_disposable_messages(bot: Bot, chat_id: int, state: FSMContext) -> None:
+    data = await state.get_data()
+    ids: list[int] = list(data.get("disposable_bot_message_ids") or [])
+    for mid in ids:
+        try:
+            await bot.delete_message(chat_id, mid)
+        except Exception:
+            pass
+    await state.update_data(disposable_bot_message_ids=[])
+
+
+async def delete_bot_message_safe(bot: Bot, chat_id: int, message_id: int) -> None:
+    try:
+        await bot.delete_message(chat_id, message_id)
+    except Exception:
+        pass
+
+
+async def send_explaining(
+    bot: Bot, chat_id: int, text: str, state: FSMContext | None = None
+) -> None:
+    """Поясняющее сообщение без кнопок; при переданном state — удаляется при выходе из сценария."""
+    msg = await bot.send_message(chat_id, text)
+    if state is not None:
+        await register_disposable(state, msg.message_id)
 
 
 async def refresh_service_menu(
