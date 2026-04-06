@@ -719,11 +719,8 @@ async def svc_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await purge_disposable_messages(callback.bot, callback.message.chat.id, state)
     await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
     await state.clear()
-    cancelled = await callback.message.answer(T.ACTION_CANCELLED)
+    await callback.message.answer(T.ACTION_CANCELLED)
     await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
-    await delete_bot_message_safe(
-        callback.bot, callback.message.chat.id, cancelled.message_id
-    )
 
 
 async def _send_media_group_with_flood_retry(
@@ -929,11 +926,8 @@ async def svc_send_photo(callback: CallbackQuery, state: FSMContext, db: Databas
         )
         await purge_disposable_messages(callback.bot, callback.message.chat.id, state)
         await state.clear()
-        sent = await callback.message.answer(T.REPORT_SENT)
+        await callback.message.answer(T.REPORT_SENT)
         await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
-        await delete_bot_message_safe(
-            callback.bot, callback.message.chat.id, sent.message_id
-        )
     except TelegramBadRequest as e:
         await _recover_from_group_send_error(callback, state, e)
 
@@ -998,11 +992,8 @@ async def svc_send_video(callback: CallbackQuery, state: FSMContext, db: Databas
         )
         await purge_disposable_messages(callback.bot, callback.message.chat.id, state)
         await state.clear()
-        sent = await callback.message.answer(T.REPORT_SENT)
+        await callback.message.answer(T.REPORT_SENT)
         await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
-        await delete_bot_message_safe(
-            callback.bot, callback.message.chat.id, sent.message_id
-        )
     except TelegramBadRequest as e:
         await _recover_from_group_send_error(callback, state, e)
 
@@ -1128,9 +1119,8 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
         await clear_scenario_hint_message(bot, chat_id, state)
         await purge_disposable_messages(bot, chat_id, state)
         await state.clear()
-        sent = await callback.message.answer(T.REPORT_SENT)
+        await callback.message.answer(T.REPORT_SENT)
         await callback.message.answer(T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
-        await delete_bot_message_safe(bot, chat_id, sent.message_id)
     except TelegramBadRequest as e:
         await register_disposable(state, sending_msg.message_id)
         await _recover_from_group_send_error(callback, state, e)

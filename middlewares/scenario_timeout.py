@@ -15,7 +15,6 @@ import texts_ru as T
 from services.service_menu import (
     clear_scenario_hint_message,
     clear_service_menu_message,
-    delete_bot_message_safe,
     purge_disposable_messages,
 )
 
@@ -80,9 +79,8 @@ class ScenarioTimeoutMiddleware(BaseMiddleware):
                 await purge_disposable_messages(bot, chat_id, state)
                 await clear_service_menu_message(bot, chat_id, state)
                 await state.clear()
-                timeout_msg = await bot.send_message(chat_id, T.SCENARIO_TIMEOUT)
+                await bot.send_message(chat_id, T.SCENARIO_TIMEOUT)
                 await bot.send_message(chat_id, T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard())
-                await delete_bot_message_safe(bot, chat_id, timeout_msg.message_id)
             except asyncio.CancelledError:
                 return
 
