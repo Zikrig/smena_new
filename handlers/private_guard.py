@@ -23,7 +23,7 @@ from constants import (
     TELEGRAM_MEDIA_GROUP_MAX,
 )
 from core.config import EMERGENCY_CONTACTS
-from core.keyboards import accounted_markup, hide_inline_keyboard, main_menu_keyboard
+from core.keyboards import accounted_markup, main_menu_keyboard
 from core.report_types import ReportKind, report_title
 from core.states import GuardStates
 from core.utils import telegram_group_message_link
@@ -49,6 +49,13 @@ _log = logging.getLogger(__name__)
 
 async def _pause_between_group_sends() -> None:
     await asyncio.sleep(SECONDS_BETWEEN_GROUP_SENDS)
+
+
+async def _delete_main_menu_message(message: Message) -> None:
+    """Сообщение с главным меню, с которого нажата кнопка — удаляем целиком."""
+    if not message.chat:
+        return
+    await delete_bot_message_safe(message.bot, message.chat.id, message.message_id)
 
 
 async def _refresh_message_report_menu(bot, chat_id: int, state: FSMContext) -> None:
@@ -169,7 +176,7 @@ def _base_photo_data(kind: ReportKind) -> dict:
 
 
 async def _enter_photo_scenario(message: Message, state: FSMContext, kind: ReportKind) -> None:
-    await hide_inline_keyboard(message)
+    await _delete_main_menu_message(message)
     await state.clear()
     cancel_album_task(message.from_user.id)
     cancel_fallback_menu_task(message.from_user.id)
@@ -197,7 +204,7 @@ async def _enter_photo_scenario(message: Message, state: FSMContext, kind: Repor
 
 
 async def _enter_video_scenario(message: Message, state: FSMContext, kind: ReportKind) -> None:
-    await hide_inline_keyboard(message)
+    await _delete_main_menu_message(message)
     await state.clear()
     cancel_album_task(message.from_user.id)
     cancel_fallback_menu_task(message.from_user.id)
@@ -223,7 +230,7 @@ async def _enter_video_scenario(message: Message, state: FSMContext, kind: Repor
 
 
 async def _enter_message_scenario(message: Message, state: FSMContext) -> None:
-    await hide_inline_keyboard(message)
+    await _delete_main_menu_message(message)
     await state.clear()
     cancel_album_task(message.from_user.id)
     cancel_fallback_menu_task(message.from_user.id)
