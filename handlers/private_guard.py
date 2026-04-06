@@ -770,8 +770,16 @@ async def _send_to_group_and_log(
     link: str,
     comment: str,
 ) -> None:
+    """Лог в Google Sheets в фоне — не блокируем «Отчёт отправлен» ожиданием сети."""
     label = f"id:{user.id}" + (f" @{user.username}" if getattr(user, "username", None) else "")
-    await sheets.log_event(obj.sheet_title, event_type, label, link, comment)
+
+    async def _bg() -> None:
+        try:
+            await sheets.log_event(obj.sheet_title, event_type, label, link, comment)
+        except Exception as e:
+            _log.warning("Фоновый лог в Sheets не выполнен: %s", e)
+
+    asyncio.create_task(_bg())
 
 
 @router.callback_query(F.data == "svc_send", GuardStates.photo_report)
