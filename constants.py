@@ -15,7 +15,10 @@ HARD_PHOTO_LIMIT = 20
 TELEGRAM_MEDIA_GROUP_MAX = 10
 
 # Пауза между подряд идущими альбомами в один чат (снижает flood control).
-SECONDS_BETWEEN_MEDIA_GROUPS = 1.2
+SECONDS_BETWEEN_MEDIA_GROUPS = 2.0
+
+# Пауза между двумя подряд сообщениями/действиями бота в группу объекта (снижает 429 Flood).
+SECONDS_BETWEEN_GROUP_SENDS = 2.0
 
 # Длина одноразового токена привязки охранника (байты hex).
 BIND_TOKEN_BYTES = 8

@@ -17,6 +17,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, InputMediaPhoto, Mes
 from constants import (
     ALBUM_DEBOUNCE_SECONDS,
     HARD_PHOTO_LIMIT,
+    SECONDS_BETWEEN_GROUP_SENDS,
     SECONDS_BETWEEN_MEDIA_GROUPS,
     SOFT_PHOTO_LIMIT,
     TELEGRAM_MEDIA_GROUP_MAX,
@@ -38,6 +39,10 @@ from services.image_stamp import stamp_datetime_on_photo
 
 router = Router(name="private_guard")
 _log = logging.getLogger(__name__)
+
+
+async def _pause_between_group_sends() -> None:
+    await asyncio.sleep(SECONDS_BETWEEN_GROUP_SENDS)
 
 
 async def _refresh_message_report_menu(bot, chat_id: int, state: FSMContext) -> None:
@@ -668,6 +673,46 @@ async def _send_photo_with_flood_retry(
             await asyncio.sleep(float(e.retry_after))
 
 
+async def _send_message_with_flood_retry(
+    bot,
+    chat_id: int,
+    text: str,
+    *,
+    reply_to_message_id: Optional[int] = None,
+    reply_markup: Optional[Any] = None,
+) -> Message:
+    while True:
+        try:
+            return await bot.send_message(
+                chat_id,
+                text,
+                reply_to_message_id=reply_to_message_id,
+                reply_markup=reply_markup,
+            )
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(float(e.retry_after))
+
+
+async def _copy_message_with_flood_retry(
+    bot,
+    chat_id: int,
+    from_chat_id: int,
+    message_id: int,
+    *,
+    reply_markup: Optional[Any] = None,
+) -> Message:
+    while True:
+        try:
+            return await bot.copy_message(
+                chat_id=chat_id,
+                from_chat_id=from_chat_id,
+                message_id=message_id,
+                reply_markup=reply_markup,
+            )
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(float(e.retry_after))
+
+
 async def _build_stamped_photo(bot, file_id: str, dt: datetime) -> BufferedInputFile:
     tg_file = await bot.get_file(file_id)
     raw = BytesIO()
@@ -806,13 +851,16 @@ async def svc_send_video(callback: CallbackQuery, state: FSMContext, db: Databas
     try:
         times = [datetime.now()]
         cap = format_text_report_caption(kind, times)
-        msg = await callback.bot.copy_message(
-            chat_id=obj.group_chat_id,
-            from_chat_id=callback.from_user.id,
-            message_id=ids[0],
+        msg = await _copy_message_with_flood_retry(
+            callback.bot,
+            obj.group_chat_id,
+            callback.from_user.id,
+            ids[0],
         )
+        await _pause_between_group_sends()
         # У video_note нет caption в API — текст отчёта отдельным сообщением (ответ на кружок).
-        await callback.bot.send_message(
+        await _send_message_with_flood_retry(
+            callback.bot,
             obj.group_chat_id,
             cap,
             reply_to_message_id=msg.message_id,
@@ -887,7 +935,8 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
             ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
             kb = accounted_markup(f"a:{ref_id}")
             header = format_text_report_caption(ReportKind.MESSAGE, [datetime.now()])
-            msg = await callback.bot.send_message(
+            msg = await _send_message_with_flood_retry(
+                callback.bot,
                 obj.group_chat_id,
                 f"{header}\n\n{body}",
                 reply_markup=kb,
@@ -900,25 +949,22 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
                 return
             ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
             kb = accounted_markup(f"a:{ref_id}")
-            while True:
-                try:
-                    msg = await callback.bot.copy_message(
-                        chat_id=obj.group_chat_id,
-                        from_chat_id=uid,
-                        message_id=smid,
-                        reply_markup=kb,
-                    )
-                    break
-                except TelegramRetryAfter as e:
-                    await asyncio.sleep(float(e.retry_after))
+            msg = await _copy_message_with_flood_retry(
+                callback.bot,
+                obj.group_chat_id,
+                uid,
+                smid,
+                reply_markup=kb,
+            )
             mid = msg.message_id
+            await _pause_between_group_sends()
             extra = format_text_report_caption(ReportKind.MESSAGE, [datetime.now()])
             try:
                 await callback.bot.edit_message_caption(
                     chat_id=obj.group_chat_id, message_id=mid, caption=extra
                 )
             except Exception:
-                await callback.bot.send_message(obj.group_chat_id, extra)
+                await _send_message_with_flood_retry(callback.bot, obj.group_chat_id, extra)
         else:
             await send_explaining(
                 callback.bot, callback.message.chat.id, "Сначала отправьте содержимое отчёта."
@@ -927,6 +973,7 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
 
         await db.finalize_group_post_ref(ref_id, mid)
         link = telegram_group_message_link(obj.group_chat_id, mid)
+        await _pause_between_group_sends()
         await _pin_report_message(callback.bot, obj.group_chat_id, mid)
 
         await _send_to_group_and_log(
