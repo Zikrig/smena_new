@@ -76,6 +76,21 @@ async def _refresh_message_report_menu(bot, chat_id: int, state: FSMContext) -> 
         )
 
 
+async def _delete_message_scenario_hint_if_needed(
+    bot, chat_id: int, state: FSMContext
+) -> None:
+    """В сценарии «Сообщение» после первого фото убираем длинную подсказку, остаётся «Запущен отчёт»."""
+    data = await state.get_data()
+    hint_id = data.get("message_scenario_hint_message_id")
+    if not hint_id:
+        return
+    entries: List[dict] = list(data.get("photo_entries") or [])
+    if len(entries) < 1:
+        return
+    await delete_bot_message_safe(bot, chat_id, int(hint_id))
+    await state.update_data(message_scenario_hint_message_id=None)
+
+
 async def _pin_report_message(bot, chat_id: int, message_id: int) -> None:
     try:
         await bot.pin_chat_message(chat_id, message_id, disable_notification=True)
@@ -225,7 +240,8 @@ async def _enter_message_scenario(message: Message, state: FSMContext) -> None:
         T.REPORT_STARTED.format(report_title=report_title(ReportKind.MESSAGE))
     )
     await register_disposable(state, started.message_id)
-    await message.answer(T.MESSAGE_SCENARIO_HINT)
+    hint_msg = await message.answer(T.MESSAGE_SCENARIO_HINT)
+    await state.update_data(message_scenario_hint_message_id=hint_msg.message_id)
     await _refresh_message_report_menu(message.bot, message.chat.id, state)
 
 
@@ -355,6 +371,8 @@ async def _flush_album_to_entries(
             photo_count=len(entries),
             no_counter_caption=no_counter,
         )
+        if is_message_scenario and len(entries) > 0:
+            await _delete_message_scenario_hint_if_needed(bot, chat_id, state)
         return
     entries.extend(buf)
     await state.update_data(photo_entries=entries, album_buffer=[], album_group_id=None)
@@ -383,6 +401,8 @@ async def _flush_album_to_entries(
         photo_count=len(entries),
         no_counter_caption=no_counter,
     )
+    if is_message_scenario and len(entries) > 0:
+        await _delete_message_scenario_hint_if_needed(bot, chat_id, state)
 
 
 def _make_photo_entry(message: Message) -> dict:
@@ -592,6 +612,9 @@ async def message_scenario_photo(message: Message, state: FSMContext) -> None:
             return await _refresh_message_report_menu(message.bot, message.chat.id, state)
         entries.append(_make_photo_entry(message))
         await state.update_data(photo_entries=entries)
+        await _delete_message_scenario_hint_if_needed(
+            message.bot, message.chat.id, state
+        )
         return await _refresh_message_report_menu(message.bot, message.chat.id, state)
 
     gid = str(mg)
