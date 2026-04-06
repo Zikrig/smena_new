@@ -31,7 +31,10 @@ async def refresh_service_menu(
         except Exception:
             pass
     if show_photo_counter:
-        text = T.SERVICE_MENU_CAPTION.format(count=photo_count, hard_limit=HARD_PHOTO_LIMIT)
+        if no_counter_caption is not None:
+            text = no_counter_caption.format(count=photo_count, hard_limit=HARD_PHOTO_LIMIT)
+        else:
+            text = T.SERVICE_MENU_CAPTION.format(count=photo_count, hard_limit=HARD_PHOTO_LIMIT)
     else:
         text = no_counter_caption or T.SERVICE_MENU_CAPTION_NO_COUNTER
     msg = await bot.send_message(

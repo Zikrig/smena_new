@@ -41,14 +41,28 @@ _log = logging.getLogger(__name__)
 
 
 async def _refresh_message_report_menu(bot, chat_id: int, state: FSMContext) -> None:
-    await refresh_service_menu(
-        bot,
-        chat_id,
-        state,
-        show_photo_counter=False,
-        photo_count=0,
-        no_counter_caption=T.SERVICE_MENU_CAPTION_MESSAGE,
-    )
+    data = await state.get_data()
+    entries = list(data.get("photo_entries") or [])
+    n = len(entries)
+    locked = data.get("msg_locked_kind")
+    if locked == "photo" or n > 0:
+        await refresh_service_menu(
+            bot,
+            chat_id,
+            state,
+            show_photo_counter=True,
+            photo_count=n,
+            no_counter_caption=T.SERVICE_MENU_CAPTION_MESSAGE_WITH_PHOTOS,
+        )
+    else:
+        await refresh_service_menu(
+            bot,
+            chat_id,
+            state,
+            show_photo_counter=False,
+            photo_count=0,
+            no_counter_caption=T.SERVICE_MENU_CAPTION_MESSAGE,
+        )
 
 
 async def _pin_report_message(bot, chat_id: int, message_id: int) -> None:
@@ -137,6 +151,13 @@ async def _enter_photo_scenario(message: Message, state: FSMContext, kind: Repor
     await state.update_data(**_base_photo_data(kind))
     title = report_title(kind)
     await message.answer(T.REPORT_STARTED.format(report_title=title))
+    photo_hint = {
+        ReportKind.HANDOVER: T.PHOTO_SCENARIO_HINT_HANDOVER,
+        ReportKind.PATROL: T.PHOTO_SCENARIO_HINT_PATROL,
+        ReportKind.INSPECTION: T.PHOTO_SCENARIO_HINT_INSPECTION,
+    }.get(kind)
+    if photo_hint:
+        await message.answer(photo_hint)
     await refresh_service_menu(
         message.bot,
         message.chat.id,
@@ -155,6 +176,12 @@ async def _enter_video_scenario(message: Message, state: FSMContext, kind: Repor
     await state.update_data(report_kind=kind.value, video_msg_ids=[])
     title = report_title(kind)
     await message.answer(T.REPORT_STARTED.format(report_title=title))
+    video_hint = {
+        ReportKind.START_SHIFT: T.VIDEO_SCENARIO_HINT_START_SHIFT,
+        ReportKind.POST_CHECK: T.VIDEO_SCENARIO_HINT_POST_CHECK,
+    }.get(kind)
+    if video_hint:
+        await message.answer(video_hint)
     await refresh_service_menu(
         message.bot,
         message.chat.id,
@@ -276,9 +303,14 @@ async def _flush_album_to_entries(
         await state.update_data(album_buffer=[], album_group_id=None)
         return
     entries: List[dict] = list(data.get("photo_entries") or [])
-    no_counter = (
-        T.SERVICE_MENU_CAPTION_MESSAGE if is_message_scenario and not show_counter else None
-    )
+    if is_message_scenario:
+        no_counter = (
+            T.SERVICE_MENU_CAPTION_MESSAGE_WITH_PHOTOS
+            if show_counter
+            else T.SERVICE_MENU_CAPTION_MESSAGE
+        )
+    else:
+        no_counter = None
     if len(entries) + len(buf) > HARD_PHOTO_LIMIT:
         can_take = max(0, HARD_PHOTO_LIMIT - len(entries))
         dropped = len(buf) - can_take
@@ -502,7 +534,7 @@ async def message_scenario_photo(message: Message, state: FSMContext) -> None:
             message.bot,
             message.chat.id,
             state,
-            show_counter=False,
+            show_counter=True,
             is_message_scenario=True,
         )
         data = await state.get_data()
@@ -526,7 +558,7 @@ async def message_scenario_photo(message: Message, state: FSMContext) -> None:
             message.bot,
             message.chat.id,
             state,
-            show_counter=False,
+            show_counter=True,
             is_message_scenario=True,
         )
 
@@ -536,7 +568,7 @@ async def message_scenario_photo(message: Message, state: FSMContext) -> None:
     await state.update_data(album_buffer=buf, album_group_id=gid)
     schedule_album_task(
         uid,
-        lambda: _debounce_photo(uid, message.bot, message.chat.id, state, False, True),
+        lambda: _debounce_photo(uid, message.bot, message.chat.id, state, True, True),
     )
 
 
@@ -915,20 +947,22 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
         await _recover_from_group_send_error(callback, state, e)
 
 
-@router.message(StateFilter(None), F.chat.type == ChatType.PRIVATE)
-async def fallback_private(message: Message, state: FSMContext, db: Database) -> None:
-    """Любое сообщение в ЛС без состояния и без более специфичного обработчика — показать главное меню."""
+@router.message(StateFilter(None), F.chat.type == ChatType.PRIVATE, F.photo)
+async def main_menu_photo_without_scenario(
+    message: Message, state: FSMContext, db: Database
+) -> None:
+    """Фото вне сценария: напомнить выбрать пункт меню (как в ТЗ)."""
     if not message.from_user:
         return
     uid = message.from_user.id
     cancel_album_task(uid)
     cancel_fallback_menu_task(uid)
 
-    if message.photo and message.media_group_id is not None:
+    if message.media_group_id is not None:
         bot = message.bot
         chat_id = message.chat.id
 
-        async def _send_main_menu_after_album() -> None:
+        async def _after_album() -> None:
             try:
                 await asyncio.sleep(ALBUM_DEBOUNCE_SECONDS)
             except asyncio.CancelledError:
@@ -940,11 +974,30 @@ async def fallback_private(message: Message, state: FSMContext, db: Database) ->
                 await bot.send_message(chat_id, T.OBJECT_PAUSED)
             else:
                 await bot.send_message(
-                    chat_id, T.BOT_DESCRIPTION, reply_markup=main_menu_keyboard()
+                    chat_id,
+                    T.REPORT_REQUIRES_MENU_BUTTON,
+                    reply_markup=main_menu_keyboard(),
                 )
 
-        schedule_fallback_menu_task(uid, _send_main_menu_after_album)
+        schedule_fallback_menu_task(uid, _after_album)
         return
+
+    _, err = await guard_access(db, uid)
+    if err == "not_bound":
+        return await message.answer(T.NOT_BOUND)
+    if err == "paused":
+        return await message.answer(T.OBJECT_PAUSED)
+    await message.answer(T.REPORT_REQUIRES_MENU_BUTTON, reply_markup=main_menu_keyboard())
+
+
+@router.message(StateFilter(None), F.chat.type == ChatType.PRIVATE)
+async def fallback_private(message: Message, state: FSMContext, db: Database) -> None:
+    """Любое сообщение в ЛС без состояния и без более специфичного обработчика — показать главное меню."""
+    if not message.from_user:
+        return
+    uid = message.from_user.id
+    cancel_album_task(uid)
+    cancel_fallback_menu_task(uid)
 
     _, err = await guard_access(db, uid)
     if err == "not_bound":
