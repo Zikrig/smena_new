@@ -34,6 +34,16 @@ async def delete_bot_message_safe(bot: Bot, chat_id: int, message_id: int) -> No
         pass
 
 
+async def clear_scenario_hint_message(bot: Bot, chat_id: int, state: FSMContext) -> None:
+    """Текст инструкции после «Запущен отчёт» — удалить при выходе из сценария, если ещё не убран."""
+    data = await state.get_data()
+    hint_id = data.get("scenario_hint_message_id")
+    if not hint_id:
+        return
+    await delete_bot_message_safe(bot, chat_id, int(hint_id))
+    await state.update_data(scenario_hint_message_id=None)
+
+
 async def send_explaining(
     bot: Bot, chat_id: int, text: str, state: FSMContext | None = None
 ) -> None:

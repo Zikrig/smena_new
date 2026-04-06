@@ -33,6 +33,7 @@ from services.album_tasks import cancel_album_task, schedule_album_task
 from services.fallback_menu_tasks import cancel_fallback_menu_task, schedule_fallback_menu_task
 from services.report_build import format_group_caption, format_text_report_caption
 from services.service_menu import (
+    clear_scenario_hint_message,
     clear_service_menu_message,
     delete_bot_message_safe,
     purge_disposable_messages,
@@ -108,6 +109,9 @@ async def _recover_from_group_send_error(
     callback: CallbackQuery, state: FSMContext, exc: Exception
 ) -> None:
     _log.warning("Отправка в группу объекта не удалась: %s", exc)
+    await clear_scenario_hint_message(
+        callback.bot, callback.message.chat.id, state
+    )
     await purge_disposable_messages(callback.bot, callback.message.chat.id, state)
     await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
     await state.clear()
@@ -709,6 +713,9 @@ async def svc_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     cancel_album_task(callback.from_user.id)
     cancel_fallback_menu_task(callback.from_user.id)
+    await clear_scenario_hint_message(
+        callback.bot, callback.message.chat.id, state
+    )
     await purge_disposable_messages(callback.bot, callback.message.chat.id, state)
     await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
     await state.clear()
@@ -917,6 +924,9 @@ async def svc_send_photo(callback: CallbackQuery, state: FSMContext, db: Databas
         )
 
         await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+        await clear_scenario_hint_message(
+            callback.bot, callback.message.chat.id, state
+        )
         await purge_disposable_messages(callback.bot, callback.message.chat.id, state)
         await state.clear()
         sent = await callback.message.answer(T.REPORT_SENT)
@@ -983,6 +993,9 @@ async def svc_send_video(callback: CallbackQuery, state: FSMContext, db: Databas
             comment="видеокружок",
         )
         await clear_service_menu_message(callback.bot, callback.message.chat.id, state)
+        await clear_scenario_hint_message(
+            callback.bot, callback.message.chat.id, state
+        )
         await purge_disposable_messages(callback.bot, callback.message.chat.id, state)
         await state.clear()
         sent = await callback.message.answer(T.REPORT_SENT)
@@ -1112,6 +1125,7 @@ async def svc_send_message(callback: CallbackQuery, state: FSMContext, db: Datab
 
         await register_disposable(state, sending_msg.message_id)
         await clear_service_menu_message(callback.bot, chat_id, state)
+        await clear_scenario_hint_message(bot, chat_id, state)
         await purge_disposable_messages(bot, chat_id, state)
         await state.clear()
         sent = await callback.message.answer(T.REPORT_SENT)
