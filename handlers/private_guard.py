@@ -187,8 +187,7 @@ async def _enter_photo_scenario(message: Message, state: FSMContext, kind: Repor
     await state.set_state(GuardStates.photo_report)
     await state.update_data(**_base_photo_data(kind))
     title = report_title(kind)
-    started = await message.answer(T.REPORT_STARTED.format(report_title=title))
-    await register_disposable(state, started.message_id)
+    await message.answer(T.REPORT_STARTED.format(report_title=title))
     photo_hint = {
         ReportKind.HANDOVER: T.PHOTO_SCENARIO_HINT_HANDOVER,
         ReportKind.PATROL: T.PHOTO_SCENARIO_HINT_PATROL,
@@ -215,8 +214,7 @@ async def _enter_video_scenario(message: Message, state: FSMContext, kind: Repor
     await state.set_state(GuardStates.video_note_report)
     await state.update_data(report_kind=kind.value, video_msg_ids=[])
     title = report_title(kind)
-    started = await message.answer(T.REPORT_STARTED.format(report_title=title))
-    await register_disposable(state, started.message_id)
+    await message.answer(T.REPORT_STARTED.format(report_title=title))
     video_hint = {
         ReportKind.START_SHIFT: T.VIDEO_SCENARIO_HINT_START_SHIFT,
         ReportKind.POST_CHECK: T.VIDEO_SCENARIO_HINT_POST_CHECK,
@@ -248,10 +246,9 @@ async def _enter_message_scenario(message: Message, state: FSMContext) -> None:
         single_msg_id=None,
         message_text_body=None,
     )
-    started = await message.answer(
+    await message.answer(
         T.REPORT_STARTED.format(report_title=report_title(ReportKind.MESSAGE))
     )
-    await register_disposable(state, started.message_id)
     hint_msg = await message.answer(T.MESSAGE_SCENARIO_HINT)
     await state.update_data(scenario_hint_message_id=hint_msg.message_id)
     await _refresh_message_report_menu(message.bot, message.chat.id, state)
