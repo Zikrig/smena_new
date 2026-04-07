@@ -570,6 +570,14 @@ async def video_note_collect(message: Message, state: FSMContext) -> None:
 async def video_note_wrong(message: Message, state: FSMContext) -> None:
     # Видеосценарий: если пользователь шлёт пачку «не того» (например много фото),
     # не спамим одинаковой ошибкой и не пересоздаём сервисное меню на каждое сообщение.
+    if message.media_group_id is not None:
+        data = await state.get_data()
+        current_group_id = str(message.media_group_id)
+        last_group_id = data.get("wrong_content_album_group_id")
+        if last_group_id == current_group_id:
+            return
+        await state.update_data(wrong_content_album_group_id=current_group_id)
+
     data = await state.get_data()
     if not data.get("wrong_content_warned_video_note"):
         await state.update_data(wrong_content_warned_video_note=True)
