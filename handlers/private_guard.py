@@ -568,19 +568,17 @@ async def video_note_collect(message: Message, state: FSMContext) -> None:
 
 @router.message(GuardStates.video_note_report)
 async def video_note_wrong(message: Message, state: FSMContext) -> None:
-    await send_explaining(
-        message.bot,
-        message.chat.id,
-        T.WRONG_CONTENT.format(reason="нужен только видеокружок"),
-        state,
-    )
-    await refresh_service_menu(
-        message.bot,
-        message.chat.id,
-        state,
-        show_photo_counter=False,
-        photo_count=0,
-    )
+    # Видеосценарий: если пользователь шлёт пачку «не того» (например много фото),
+    # не спамим одинаковой ошибкой и не пересоздаём сервисное меню на каждое сообщение.
+    data = await state.get_data()
+    if not data.get("wrong_content_warned_video_note"):
+        await state.update_data(wrong_content_warned_video_note=True)
+        await send_explaining(
+            message.bot,
+            message.chat.id,
+            T.WRONG_CONTENT.format(reason="нужен только видеокружок"),
+            state,
+        )
 
 
 @router.message(GuardStates.message_report, F.photo)
