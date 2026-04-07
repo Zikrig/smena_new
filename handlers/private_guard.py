@@ -579,6 +579,13 @@ async def video_note_wrong(message: Message, state: FSMContext) -> None:
             T.WRONG_CONTENT.format(reason="нужен только видеокружок"),
             state,
         )
+        await refresh_service_menu(
+            message.bot,
+            message.chat.id,
+            state,
+            show_photo_counter=False,
+            photo_count=0,
+        )
 
 
 @router.message(GuardStates.message_report, F.photo)

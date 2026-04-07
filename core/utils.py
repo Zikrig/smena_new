@@ -9,4 +9,6 @@ def telegram_group_message_link(chat_id: int, message_id: int) -> str:
     s = str(chat_id)
     if s.startswith("-100"):
         return f"https://t.me/c/{s[4:]}/{message_id}"
-    return f"{chat_id}/{message_id}"
+    if s.startswith("-"):
+        return f"https://t.me/c/{s[1:]}/{message_id}"
+    return f"https://t.me/c/{s}/{message_id}"
