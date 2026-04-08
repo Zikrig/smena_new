@@ -26,7 +26,7 @@ async def accounted_click(callback: CallbackQuery, db: Database) -> None:
     if not is_bot_admin(callback.from_user.id):
         return await callback.answer(T.BOT_ADMIN_ONLY, show_alert=True)
     try:
-        await callback.bot.unpin_chat_message(group_chat_id, message_id)
+        await callback.bot.unpin_chat_message(chat_id=group_chat_id)
     except Exception:
         pass
     try:
@@ -45,7 +45,7 @@ async def accounted_click(callback: CallbackQuery, db: Database) -> None:
         link = telegram_group_message_link(group_chat_id, message_id)
         await sheets.log_event(
             obj.sheet_title,
-            "Учтено",
+            "Откреплено",
             who,
             link,
             "",

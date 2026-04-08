@@ -200,7 +200,7 @@ ALREADY_BOUND = "Вы уже привязаны к объекту."
 
 GROUP_NOT_OBJECT = "Сначала зарегистрируйте объект: /set_object Название"
 
-INLINE_ACCOUNTED = "Учтено"
+INLINE_ACCOUNTED = "Открепить"
 
 ACCOUNTED_DONE = "Отмечено."
 
