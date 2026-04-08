@@ -200,6 +200,11 @@ ALREADY_BOUND = "Вы уже привязаны к объекту."
 
 GROUP_NOT_OBJECT = "Сначала зарегистрируйте объект: /set_object Название"
 
+SHEET_TITLE_CONFLICT = (
+    "Ошибка: лист с названием «{name}» уже существует. "
+    "Укажите другое название объекта."
+)
+
 INLINE_ACCOUNTED = "Открепить"
 
 ACCOUNTED_DONE = "Отмечено."

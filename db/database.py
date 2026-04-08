@@ -9,6 +9,10 @@ import aiosqlite
 from constants import BIND_TOKEN_BYTES
 
 
+class SheetTitleConflictError(Exception):
+    pass
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS objects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,7 +73,7 @@ class Database:
     @staticmethod
     def _slug_sheet_title(name: str, chat_id: int) -> str:
         safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in name)[:80]
-        return f"{safe or 'object'}_{abs(chat_id) % 10_000_000}"
+        return safe or "object"
 
     def _row_to_object(self, row) -> ObjectRow:
         return ObjectRow(
@@ -82,13 +86,34 @@ class Database:
 
     async def upsert_object(self, name: str, group_chat_id: int) -> ObjectRow:
         sheet_title = self._slug_sheet_title(name, group_chat_id)
+        cur_existing = await self._db.execute(
+            "SELECT id, sheet_title FROM objects WHERE group_chat_id = ?",
+            (group_chat_id,),
+        )
+        existing = await cur_existing.fetchone()
+        if existing:
+            await self._db.execute(
+                """
+                UPDATE objects
+                SET name = ?
+                WHERE group_chat_id = ?
+                """,
+                (name, group_chat_id),
+            )
+        else:
+            cur_conflict = await self._db.execute(
+                "SELECT id FROM objects WHERE sheet_title = ? LIMIT 1",
+                (sheet_title,),
+            )
+            conflict = await cur_conflict.fetchone()
+            if conflict:
+                raise SheetTitleConflictError(sheet_title)
         await self._db.execute(
             """
             INSERT INTO objects (name, group_chat_id, sheet_title, is_paused)
             VALUES (?, ?, ?, 0)
             ON CONFLICT(group_chat_id) DO UPDATE SET
-                name = excluded.name,
-                sheet_title = excluded.sheet_title
+                name = excluded.name
             """,
             (name, group_chat_id, sheet_title),
         )

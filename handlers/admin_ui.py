@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import texts_ru as T
-from db.database import Database, ObjectRow
+from db.database import Database, ObjectRow, SheetTitleConflictError
 from core.states import AdminStates
 from core.utils import is_bot_admin
 
@@ -347,7 +347,10 @@ async def msg_group_name(message: Message, state: FSMContext, db: Database) -> N
         return await message.answer("Название не может быть пустым.")
     data = await state.get_data()
     cid = int(data["admin_new_group_chat_id"])
-    row = await db.upsert_object(name, cid)
+    try:
+        row = await db.upsert_object(name, cid)
+    except SheetTitleConflictError:
+        return await message.answer(T.SHEET_TITLE_CONFLICT.format(name=name))
     await state.clear()
     await message.answer(
         f"Объект «{row.name}» зарегистрирован для чата <code>{cid}</code>.",

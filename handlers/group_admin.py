@@ -4,7 +4,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 import texts_ru as T
-from db.database import Database
+from db.database import Database, SheetTitleConflictError
 from core.utils import is_bot_admin
 
 router = Router(name="group_admin")
@@ -25,7 +25,10 @@ async def cmd_set_object(message: Message, db: Database) -> None:
     if len(parts) < 2 or not parts[1].strip():
         return await message.reply("Укажите название: /set_object Название")
     name = parts[1].strip()
-    row = await db.upsert_object(name, message.chat.id)
+    try:
+        row = await db.upsert_object(name, message.chat.id)
+    except SheetTitleConflictError:
+        return await message.reply(T.SHEET_TITLE_CONFLICT.format(name=name))
     await message.reply(T.OBJECT_REGISTERED.format(name=row.name))
 
 
