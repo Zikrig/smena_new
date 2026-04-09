@@ -62,8 +62,8 @@ _GUARD_STATES = [
     GuardStates.message_report,
 ]
 
-# Тревога: и из главного меню (в т.ч. «зависшее» сообщение), и из сервисного меню сценария.
-_ALARM_CALLBACK_STATES = [None, *_GUARD_STATES]
+# Тревога доступна только из главного меню.
+_ALARM_CALLBACK_STATES = [None]
 
 
 async def _pin_report_message(bot, chat_id: int, message_mid_s: str) -> None:
@@ -350,7 +350,7 @@ async def menu_message(event: MessageCallback, context: BaseContext, db: Databas
 
 
 @router.message_callback(
-    F.callback.payload.in_({"menu:alarm", "svc:alarm"}),
+    F.callback.payload == "menu:alarm",
     states=_ALARM_CALLBACK_STATES,
 )
 async def alarm_show_contacts(event: MessageCallback, context: BaseContext, db: Database) -> None:
@@ -359,10 +359,7 @@ async def alarm_show_contacts(event: MessageCallback, context: BaseContext, db: 
     msg = event.message
     if not msg:
         return
-    # Только кнопки главного меню убираем; сервисное меню и так пересоздаётся в refresh_service_menu.
-    pl = event.callback.payload or ""
-    if pl == "menu:alarm":
-        await hide_inline_keyboard(msg)
+    await hide_inline_keyboard(msg)
     r = msg.recipient
     await _deliver_emergency_contacts(msg.bot, r.chat_id, r.user_id, context)
 
