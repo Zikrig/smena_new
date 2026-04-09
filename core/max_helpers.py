@@ -47,6 +47,18 @@ def first_image_payload(message: Message) -> Optional[PhotoAttachmentPayload]:
     return None
 
 
+def image_payloads(message: Message) -> list[PhotoAttachmentPayload]:
+    body = message.body
+    if not body or not body.attachments:
+        return []
+    result: list[PhotoAttachmentPayload] = []
+    for a in body.attachments:
+        if getattr(a, "type", None) == AttachmentType.IMAGE and a.payload is not None:
+            if isinstance(a.payload, PhotoAttachmentPayload):
+                result.append(a.payload)
+    return result
+
+
 def album_group_token(message: Message) -> Optional[str]:
     """
     Идентификатор «альбома», если платформа его присылает (не документировано стабильно).
@@ -76,6 +88,26 @@ def make_photo_entry(message: Message) -> dict[str, Any]:
         "dt": datetime.now(),
         "mid": mid,
     }
+
+
+def make_photo_entries(message: Message) -> list[dict[str, Any]]:
+    """Записи для всех фото-вложений сообщения."""
+    payloads = image_payloads(message)
+    if not payloads:
+        return []
+    mid = message_mid(message) or ""
+    now = datetime.now()
+    entries: list[dict[str, Any]] = []
+    for pl in payloads:
+        entries.append(
+            {
+                "url": pl.url,
+                "token": pl.token,
+                "dt": now,
+                "mid": mid,
+            }
+        )
+    return entries
 
 
 async def fetch_image_bytes(url: str) -> bytes:

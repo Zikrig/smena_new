@@ -52,5 +52,6 @@ def service_menu_markup(*, show_photo_counter: bool, photo_count: int):
 
 def accounted_markup(callback_payload: str):
     b = InlineKeyboardBuilder()
-    b.button(text=T.INLINE_ACCOUNTED, payload=callback_payload)
+    b.add(CallbackButton(text=T.INLINE_ACCOUNTED, payload=callback_payload))
+    b.adjust(1)
     return b.as_markup()

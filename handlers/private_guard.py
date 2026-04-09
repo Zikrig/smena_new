@@ -36,7 +36,7 @@ from core.max_filters import (
 from core.max_helpers import (
     album_group_token,
     build_stamped_photo_buffer,
-    make_photo_entry,
+    make_photo_entries,
     message_mid,
     message_text,
     peer_from_message,
@@ -533,6 +533,9 @@ async def photo_report_collect(event: MessageCreated, context: BaseContext) -> N
     su = message.sender.user_id if message.sender else None
     if su is None:
         return
+    batch_entries = make_photo_entries(message)
+    if not batch_entries:
+        return
     data = await context.get_data()
     entries: List[dict] = list(data.get("photo_entries") or [])
     mg = album_group_token(message)
@@ -563,7 +566,12 @@ async def photo_report_collect(event: MessageCreated, context: BaseContext) -> N
         data = await context.get_data()
         entries = list(data.get("photo_entries") or [])
         if len(entries) >= HARD_PHOTO_LIMIT:
-            await send_explaining(bot, r.chat_id, r.user_id, T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=1))
+            await send_explaining(
+                bot,
+                r.chat_id,
+                r.user_id,
+                T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=len(batch_entries)),
+            )
             await refresh_service_menu(
                 bot,
                 r.chat_id,
@@ -573,8 +581,14 @@ async def photo_report_collect(event: MessageCreated, context: BaseContext) -> N
                 photo_count=len(entries),
             )
             return
-        entries.append(make_photo_entry(message))
+        can_take = max(0, HARD_PHOTO_LIMIT - len(entries))
+        accepted = batch_entries[:can_take]
+        dropped = len(batch_entries) - len(accepted)
+        if accepted:
+            entries.extend(accepted)
         await context.update_data(photo_entries=entries)
+        if dropped > 0:
+            await send_explaining(bot, r.chat_id, r.user_id, T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=dropped))
         if len(entries) > SOFT_PHOTO_LIMIT and not data.get("soft_warned"):
             await context.update_data(soft_warned=True)
             await send_explaining(
@@ -605,7 +619,7 @@ async def photo_report_collect(event: MessageCreated, context: BaseContext) -> N
 
     data = await context.get_data()
     buf = list(data.get("album_buffer") or [])
-    buf.append(make_photo_entry(message))
+    buf.extend(batch_entries)
     await context.update_data(album_buffer=buf, album_group_id=gid)
     schedule_album_task(
         su,
@@ -679,6 +693,9 @@ async def video_wrong(event: MessageCreated, context: BaseContext) -> None:
 @router.message_created(GuardStates.message_report, HasImageAttachment())
 async def message_scenario_photo(event: MessageCreated, context: BaseContext) -> None:
     message = event.message
+    batch_entries = make_photo_entries(message)
+    if not batch_entries:
+        return
     if await HasPhotoCaption()(event):
         r = message.recipient
         await send_explaining(message.bot, r.chat_id, r.user_id, T.PHOTO_CAPTION_FORBIDDEN)
@@ -725,7 +742,12 @@ async def message_scenario_photo(event: MessageCreated, context: BaseContext) ->
         data = await context.get_data()
         entries = list(data.get("photo_entries") or [])
         if len(entries) >= HARD_PHOTO_LIMIT:
-            await send_explaining(bot, r.chat_id, r.user_id, T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=1))
+            await send_explaining(
+                bot,
+                r.chat_id,
+                r.user_id,
+                T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=len(batch_entries)),
+            )
             return await refresh_service_menu(
                 bot,
                 r.chat_id,
@@ -734,8 +756,14 @@ async def message_scenario_photo(event: MessageCreated, context: BaseContext) ->
                 show_photo_counter=False,
                 photo_count=0,
             )
-        entries.append(make_photo_entry(message))
+        can_take = max(0, HARD_PHOTO_LIMIT - len(entries))
+        accepted = batch_entries[:can_take]
+        dropped = len(batch_entries) - len(accepted)
+        if accepted:
+            entries.extend(accepted)
         await context.update_data(photo_entries=entries)
+        if dropped > 0:
+            await send_explaining(bot, r.chat_id, r.user_id, T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=dropped))
         return await refresh_service_menu(
             bot,
             r.chat_id,
@@ -760,7 +788,7 @@ async def message_scenario_photo(event: MessageCreated, context: BaseContext) ->
 
     data = await context.get_data()
     buf = list(data.get("album_buffer") or [])
-    buf.append(make_photo_entry(message))
+    buf.extend(batch_entries)
     await context.update_data(album_buffer=buf, album_group_id=gid)
     schedule_album_task(
         su,
