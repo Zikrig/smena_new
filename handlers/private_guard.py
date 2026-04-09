@@ -58,7 +58,7 @@ _log = logging.getLogger(__name__)
 
 _GUARD_STATES = [
     GuardStates.photo_report,
-    GuardStates.video_note_report,
+    GuardStates.video_report,
     GuardStates.message_report,
 ]
 
@@ -181,7 +181,7 @@ async def _enter_video_scenario(message, context: BaseContext, kind: ReportKind)
     if su:
         cancel_album_task(su)
         cancel_fallback_menu_task(su)
-    await context.set_state(GuardStates.video_note_report)
+    await context.set_state(GuardStates.video_report)
     await context.update_data(
         report_kind=kind.value,
         video_msg_ids=[],
@@ -276,7 +276,7 @@ async def _deliver_emergency_contacts(
             show_photo_counter=True,
             photo_count=len(data.get("photo_entries") or []),
         )
-    elif st_name in (str(GuardStates.video_note_report), str(GuardStates.message_report)):
+    elif st_name in (str(GuardStates.video_report), str(GuardStates.message_report)):
         await refresh_service_menu(
             bot,
             chat_id,
@@ -550,8 +550,8 @@ async def photo_report_wrong(event: MessageCreated, context: BaseContext) -> Non
     )
 
 
-@router.message_created(GuardStates.video_note_report, HasVideoAttachment())
-async def video_note_collect(event: MessageCreated, context: BaseContext) -> None:
+@router.message_created(GuardStates.video_report, HasVideoAttachment())
+async def video_collect(event: MessageCreated, context: BaseContext) -> None:
     message = event.message
     r = message.recipient
     bot = message.bot
@@ -575,8 +575,8 @@ async def video_note_collect(event: MessageCreated, context: BaseContext) -> Non
     )
 
 
-@router.message_created(GuardStates.video_note_report)
-async def video_note_wrong(event: MessageCreated, context: BaseContext) -> None:
+@router.message_created(GuardStates.video_report)
+async def video_wrong(event: MessageCreated, context: BaseContext) -> None:
     message = event.message
     r = message.recipient
     bot = message.bot
@@ -584,7 +584,7 @@ async def video_note_wrong(event: MessageCreated, context: BaseContext) -> None:
         bot,
         r.chat_id,
         r.user_id,
-        T.WRONG_CONTENT.format(reason="нужно одно видео (видеокружок / видео)"),
+        T.WRONG_CONTENT.format(reason="нужно одно видео"),
     )
     await refresh_service_menu(
         bot,
@@ -902,7 +902,7 @@ async def svc_send_photo(event: MessageCallback, context: BaseContext, db: Datab
         await _recover_from_group_send_error(event, context, e)
 
 
-@router.message_callback(F.callback.payload == "svc_send", states=[GuardStates.video_note_report])
+@router.message_callback(F.callback.payload == "svc_send", states=[GuardStates.video_report])
 async def svc_send_video(event: MessageCallback, context: BaseContext, db: Database) -> None:
     cb = event.callback
     msg = event.message

@@ -5,7 +5,7 @@ class GuardStates(StatesGroup):
     """Состояния активного сценария отчёта в ЛС."""
 
     photo_report = State()
-    video_note_report = State()
+    video_report = State()
     message_report = State()
 
 

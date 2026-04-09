@@ -29,8 +29,8 @@ def format_text_report_caption(kind: ReportKind, times: List[datetime], extra: s
     title = report_title(kind)
     t = times[0] if times else datetime.now()
     media = {
-        ReportKind.START_SHIFT: "видеокружок",
-        ReportKind.POST_CHECK: "видеокружок",
+        ReportKind.START_SHIFT: "видео",
+        ReportKind.POST_CHECK: "видео",
         ReportKind.MESSAGE: "сообщение",
     }.get(kind, "сообщение")
     lines = [
