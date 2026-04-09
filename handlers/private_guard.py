@@ -464,12 +464,13 @@ async def _flush_album_to_entries(
     entries: List[dict] = list(data.get("photo_entries") or [])
     if len(entries) + len(buf) > HARD_PHOTO_LIMIT:
         can_take = max(0, HARD_PHOTO_LIMIT - len(entries))
-        dropped = len(buf) - can_take
-        if can_take > 0:
-            entries.extend(buf[:can_take])
-        await context.update_data(photo_entries=entries, album_buffer=[], album_group_id=None)
-        if dropped > 0:
-            await send_explaining(bot, chat_id, user_id, T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=dropped))
+        await context.update_data(album_buffer=[], album_group_id=None)
+        await send_explaining(
+            bot,
+            chat_id,
+            user_id,
+            T.PHOTO_LIMIT_CAN_ACCEPT_ONLY.format(n=can_take, hard=HARD_PHOTO_LIMIT),
+        )
         await refresh_service_menu(
             bot,
             chat_id,
@@ -543,7 +544,12 @@ async def photo_report_collect(event: MessageCreated, context: BaseContext) -> N
     bot = message.bot
 
     if mg is None and len(entries) >= HARD_PHOTO_LIMIT:
-        await send_explaining(bot, r.chat_id, r.user_id, T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=1))
+        await send_explaining(
+            bot,
+            r.chat_id,
+            r.user_id,
+            T.PHOTO_LIMIT_CAN_ACCEPT_ONLY.format(n=0, hard=HARD_PHOTO_LIMIT),
+        )
         await refresh_service_menu(
             bot,
             r.chat_id,
@@ -570,7 +576,7 @@ async def photo_report_collect(event: MessageCreated, context: BaseContext) -> N
                 bot,
                 r.chat_id,
                 r.user_id,
-                T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=len(batch_entries)),
+                T.PHOTO_LIMIT_CAN_ACCEPT_ONLY.format(n=0, hard=HARD_PHOTO_LIMIT),
             )
             await refresh_service_menu(
                 bot,
@@ -582,13 +588,24 @@ async def photo_report_collect(event: MessageCreated, context: BaseContext) -> N
             )
             return
         can_take = max(0, HARD_PHOTO_LIMIT - len(entries))
-        accepted = batch_entries[:can_take]
-        dropped = len(batch_entries) - len(accepted)
-        if accepted:
-            entries.extend(accepted)
+        if len(batch_entries) > can_take:
+            await send_explaining(
+                bot,
+                r.chat_id,
+                r.user_id,
+                T.PHOTO_LIMIT_CAN_ACCEPT_ONLY.format(n=can_take, hard=HARD_PHOTO_LIMIT),
+            )
+            await refresh_service_menu(
+                bot,
+                r.chat_id,
+                r.user_id,
+                context,
+                show_photo_counter=True,
+                photo_count=len(entries),
+            )
+            return
+        entries.extend(batch_entries)
         await context.update_data(photo_entries=entries)
-        if dropped > 0:
-            await send_explaining(bot, r.chat_id, r.user_id, T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=dropped))
         if len(entries) > SOFT_PHOTO_LIMIT and not data.get("soft_warned"):
             await context.update_data(soft_warned=True)
             await send_explaining(
@@ -746,7 +763,7 @@ async def message_scenario_photo(event: MessageCreated, context: BaseContext) ->
                 bot,
                 r.chat_id,
                 r.user_id,
-                T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=len(batch_entries)),
+                T.PHOTO_LIMIT_CAN_ACCEPT_ONLY.format(n=0, hard=HARD_PHOTO_LIMIT),
             )
             return await refresh_service_menu(
                 bot,
@@ -757,13 +774,23 @@ async def message_scenario_photo(event: MessageCreated, context: BaseContext) ->
                 photo_count=0,
             )
         can_take = max(0, HARD_PHOTO_LIMIT - len(entries))
-        accepted = batch_entries[:can_take]
-        dropped = len(batch_entries) - len(accepted)
-        if accepted:
-            entries.extend(accepted)
+        if len(batch_entries) > can_take:
+            await send_explaining(
+                bot,
+                r.chat_id,
+                r.user_id,
+                T.PHOTO_LIMIT_CAN_ACCEPT_ONLY.format(n=can_take, hard=HARD_PHOTO_LIMIT),
+            )
+            return await refresh_service_menu(
+                bot,
+                r.chat_id,
+                r.user_id,
+                context,
+                show_photo_counter=False,
+                photo_count=0,
+            )
+        entries.extend(batch_entries)
         await context.update_data(photo_entries=entries)
-        if dropped > 0:
-            await send_explaining(bot, r.chat_id, r.user_id, T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=dropped))
         return await refresh_service_menu(
             bot,
             r.chat_id,
