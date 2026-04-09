@@ -50,7 +50,14 @@ import texts_ru as T
 from services.album_tasks import cancel_album_task, schedule_album_task
 from services.fallback_menu_tasks import cancel_fallback_menu_task, schedule_fallback_menu_task
 from services.report_build import format_group_caption, format_text_report_caption
-from services.service_menu import clear_service_menu_message, refresh_service_menu, send_explaining
+from services.service_menu import (
+    clear_service_menu_message,
+    clear_submenu_instructions,
+    refresh_service_menu,
+    send_explaining,
+    send_or_replace_main_menu,
+    send_submenu_instruction,
+)
 from services import sheets
 
 router = Router(router_id="private_guard")
@@ -84,7 +91,14 @@ async def _recover_from_group_send_error(
     await send_explaining(msg.bot, c, u, T.GROUP_CHAT_UNAVAILABLE)
     await clear_service_menu_message(msg.bot, c, u, context)
     await context.clear()
-    await msg.answer(text=T.BOT_DESCRIPTION, attachments=[main_menu_keyboard()])
+    await send_or_replace_main_menu(
+        msg.bot,
+        c,
+        u,
+        context,
+        text=T.BOT_DESCRIPTION,
+        attachments=[main_menu_keyboard()],
+    )
 
 
 async def guard_access(
@@ -127,7 +141,15 @@ async def _start_bind(message, context: BaseContext, token: str, db: Database) -
     await db.bind_guard(su, object_id)
     obj = await db.get_object_by_id(object_id)
     await message.answer(text=T.BIND_OK.format(name=obj.name if obj else "?"))
-    await message.answer(text=T.BOT_DESCRIPTION, attachments=[main_menu_keyboard()])
+    r = message.recipient
+    await send_or_replace_main_menu(
+        message.bot,
+        r.chat_id,
+        r.user_id,
+        context,
+        text=T.BOT_DESCRIPTION,
+        attachments=[main_menu_keyboard()],
+    )
 
 
 @router.message_created(CommandStart(), IsDialog())
@@ -149,7 +171,15 @@ async def cmd_start(
         return await message.answer(text=T.NOT_BOUND)
     if err == "paused":
         return await message.answer(text=T.OBJECT_PAUSED)
-    await message.answer(text=T.BOT_DESCRIPTION, attachments=[main_menu_keyboard()])
+    r = message.recipient
+    await send_or_replace_main_menu(
+        message.bot,
+        r.chat_id,
+        r.user_id,
+        context,
+        text=T.BOT_DESCRIPTION,
+        attachments=[main_menu_keyboard()],
+    )
 
 
 async def _enter_photo_scenario(message, context: BaseContext, kind: ReportKind) -> None:
@@ -162,7 +192,13 @@ async def _enter_photo_scenario(message, context: BaseContext, kind: ReportKind)
     await context.set_state(GuardStates.photo_report)
     await context.update_data(**_base_photo_data(kind, message))
     title = report_title(kind)
-    await message.answer(text=T.REPORT_STARTED.format(report_title=title))
+    await send_submenu_instruction(
+        message.bot,
+        message.recipient.chat_id,
+        message.recipient.user_id,
+        context,
+        text=T.REPORT_STARTED.format(report_title=title),
+    )
     r = message.recipient
     await refresh_service_menu(
         message.bot,
@@ -188,7 +224,13 @@ async def _enter_video_scenario(message, context: BaseContext, kind: ReportKind)
         **_peer_data(message),
     )
     title = report_title(kind)
-    await message.answer(text=T.REPORT_STARTED.format(report_title=title))
+    await send_submenu_instruction(
+        message.bot,
+        message.recipient.chat_id,
+        message.recipient.user_id,
+        context,
+        text=T.REPORT_STARTED.format(report_title=title),
+    )
     r = message.recipient
     await refresh_service_menu(
         message.bot,
@@ -218,8 +260,20 @@ async def _enter_message_scenario(message, context: BaseContext) -> None:
         message_text_body=None,
         **_peer_data(message),
     )
-    await message.answer(text=T.REPORT_STARTED.format(report_title=report_title(ReportKind.MESSAGE)))
-    await message.answer(text=T.MESSAGE_SCENARIO_HINT)
+    await send_submenu_instruction(
+        message.bot,
+        message.recipient.chat_id,
+        message.recipient.user_id,
+        context,
+        text=T.REPORT_STARTED.format(report_title=report_title(ReportKind.MESSAGE)),
+    )
+    await send_submenu_instruction(
+        message.bot,
+        message.recipient.chat_id,
+        message.recipient.user_id,
+        context,
+        text=T.MESSAGE_SCENARIO_HINT,
+    )
     r = message.recipient
     await refresh_service_menu(
         message.bot,
@@ -286,10 +340,11 @@ async def _deliver_emergency_contacts(
             photo_count=0,
         )
     else:
-        await send_peer(
+        await send_or_replace_main_menu(
             bot,
-            chat_id=chat_id,
-            user_id=user_id,
+            chat_id,
+            user_id,
+            context,
             text=T.EMERGENCY_CALL_FOLLOWUP,
             attachments=[main_menu_keyboard()],
         )
@@ -596,7 +651,7 @@ async def video_wrong(event: MessageCreated, context: BaseContext) -> None:
 @router.message_created(GuardStates.message_report, HasImageAttachment())
 async def message_scenario_photo(event: MessageCreated, context: BaseContext) -> None:
     message = event.message
-    if HasPhotoCaption()(event):
+    if await HasPhotoCaption()(event):
         r = message.recipient
         await send_explaining(message.bot, r.chat_id, r.user_id, T.PHOTO_CAPTION_FORBIDDEN)
         return await refresh_service_menu(
@@ -788,8 +843,16 @@ async def svc_cancel(event: MessageCallback, context: BaseContext) -> None:
     if msg:
         r = msg.recipient
         await clear_service_menu_message(msg.bot, r.chat_id, r.user_id, context)
+        await clear_submenu_instructions(msg.bot, context)
         await msg.answer(text=T.ACTION_CANCELLED)
-        await msg.answer(text=T.BOT_DESCRIPTION, attachments=[main_menu_keyboard()])
+        await send_or_replace_main_menu(
+            msg.bot,
+            r.chat_id,
+            r.user_id,
+            context,
+            text=T.BOT_DESCRIPTION,
+            attachments=[main_menu_keyboard()],
+        )
     await context.clear()
 
 
@@ -891,10 +954,18 @@ async def svc_send_photo(event: MessageCallback, context: BaseContext, db: Datab
             link=link,
             comment=f"фото: {len(entries)}",
         )
+        await clear_submenu_instructions(bot, context)
         await clear_service_menu_message(bot, r.chat_id, r.user_id, context)
         await context.clear()
         await msg.answer(text=T.REPORT_SENT)
-        await msg.answer(text=T.BOT_DESCRIPTION, attachments=[main_menu_keyboard()])
+        await send_or_replace_main_menu(
+            bot,
+            r.chat_id,
+            r.user_id,
+            context,
+            text=T.BOT_DESCRIPTION,
+            attachments=[main_menu_keyboard()],
+        )
     except MaxApiError as e:
         await _recover_from_group_send_error(event, context, e)
 
@@ -950,10 +1021,18 @@ async def svc_send_video(event: MessageCallback, context: BaseContext, db: Datab
             link=link,
             comment="видео",
         )
+        await clear_submenu_instructions(bot, context)
         await clear_service_menu_message(bot, r.chat_id, r.user_id, context)
         await context.clear()
         await msg.answer(text=T.REPORT_SENT)
-        await msg.answer(text=T.BOT_DESCRIPTION, attachments=[main_menu_keyboard()])
+        await send_or_replace_main_menu(
+            bot,
+            r.chat_id,
+            r.user_id,
+            context,
+            text=T.BOT_DESCRIPTION,
+            attachments=[main_menu_keyboard()],
+        )
     except MaxApiError as e:
         await _recover_from_group_send_error(event, context, e)
 
@@ -1069,10 +1148,18 @@ async def svc_send_message(event: MessageCallback, context: BaseContext, db: Dat
             link=link,
             comment=f"тип: {locked}",
         )
+        await clear_submenu_instructions(bot, context)
         await clear_service_menu_message(bot, r.chat_id, r.user_id, context)
         await context.clear()
         await msg.answer(text=T.REPORT_SENT)
-        await msg.answer(text=T.BOT_DESCRIPTION, attachments=[main_menu_keyboard()])
+        await send_or_replace_main_menu(
+            bot,
+            r.chat_id,
+            r.user_id,
+            context,
+            text=T.BOT_DESCRIPTION,
+            attachments=[main_menu_keyboard()],
+        )
     except MaxApiError as e:
         await _recover_from_group_send_error(event, context, e)
 
@@ -1105,10 +1192,11 @@ async def fallback_private(event: MessageCreated, context: BaseContext, db: Data
             elif err == "paused":
                 await send_peer(bot, chat_id=r.chat_id, user_id=r.user_id, text=T.OBJECT_PAUSED)
             else:
-                await send_peer(
+                await send_or_replace_main_menu(
                     bot,
-                    chat_id=r.chat_id,
-                    user_id=r.user_id,
+                    r.chat_id,
+                    r.user_id,
+                    context,
                     text=T.BOT_DESCRIPTION,
                     attachments=[main_menu_keyboard()],
                 )
@@ -1121,4 +1209,11 @@ async def fallback_private(event: MessageCreated, context: BaseContext, db: Data
         return await message.answer(text=T.NOT_BOUND)
     if err == "paused":
         return await message.answer(text=T.OBJECT_PAUSED)
-    await message.answer(text=T.BOT_DESCRIPTION, attachments=[main_menu_keyboard()])
+    await send_or_replace_main_menu(
+        bot,
+        r.chat_id,
+        r.user_id,
+        context,
+        text=T.BOT_DESCRIPTION,
+        attachments=[main_menu_keyboard()],
+    )
