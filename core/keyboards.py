@@ -6,11 +6,11 @@ import texts_ru as T
 
 
 async def hide_inline_keyboard(message: Message) -> None:
-    """Убирает inline-клавиатуру с сообщения бота."""
-    if message.body is None:
+    """Удаляет сообщение бота вместе с клавиатурой."""
+    if message.body is None or not message.body.mid:
         return
     try:
-        await message.edit(text=message.body.text, attachments=[])
+        await message.bot.delete_message(str(message.body.mid))
     except Exception:
         pass
 
