@@ -54,7 +54,13 @@ async def refresh_service_menu(
     else:
         text = T.SERVICE_MENU_CAPTION_NO_COUNTER
         if data.get("report_kind") == ReportKind.MESSAGE.value:
-            text = f"{text}\n\n{T.SERVICE_MENU_MESSAGE_ONE_MEDIA_HINT}"
+            if photo_count > 0:
+                text = T.SERVICE_MENU_CAPTION_MESSAGE_WITH_PHOTOS.format(
+                    count=photo_count,
+                    hard_limit=HARD_PHOTO_LIMIT,
+                )
+            else:
+                text = T.SERVICE_MENU_CAPTION_MESSAGE
     kb = service_menu_markup(
         show_photo_counter=show_photo_counter,
         photo_count=photo_count,

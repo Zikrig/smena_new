@@ -199,6 +199,21 @@ async def _enter_photo_scenario(message, context: BaseContext, kind: ReportKind)
         context,
         text=T.REPORT_STARTED.format(report_title=title),
     )
+    hint = None
+    if kind == ReportKind.HANDOVER:
+        hint = T.PHOTO_SCENARIO_HINT_HANDOVER
+    elif kind == ReportKind.PATROL:
+        hint = T.PHOTO_SCENARIO_HINT_PATROL
+    elif kind == ReportKind.INSPECTION:
+        hint = T.PHOTO_SCENARIO_HINT_INSPECTION
+    if hint:
+        await send_submenu_instruction(
+            message.bot,
+            message.recipient.chat_id,
+            message.recipient.user_id,
+            context,
+            text=hint,
+        )
     r = message.recipient
     await refresh_service_menu(
         message.bot,
@@ -231,6 +246,19 @@ async def _enter_video_scenario(message, context: BaseContext, kind: ReportKind)
         context,
         text=T.REPORT_STARTED.format(report_title=title),
     )
+    hint = None
+    if kind == ReportKind.START_SHIFT:
+        hint = T.VIDEO_SCENARIO_HINT_START_SHIFT
+    elif kind == ReportKind.POST_CHECK:
+        hint = T.VIDEO_SCENARIO_HINT_POST_CHECK
+    if hint:
+        await send_submenu_instruction(
+            message.bot,
+            message.recipient.chat_id,
+            message.recipient.user_id,
+            context,
+            text=hint,
+        )
     r = message.recipient
     await refresh_service_menu(
         message.bot,
