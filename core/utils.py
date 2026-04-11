@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import re
 
+from constants import BIND_TOKEN_BYTES
 from maxapi.enums.chat_type import ChatType
 from maxapi.types import Message
 from maxapi.types.chats import Chat
@@ -9,6 +11,16 @@ from maxapi.types.chats import Chat
 from core.config import ADMIN_IDS
 
 log = logging.getLogger(__name__)
+
+_BIND_TOKEN_HEX_RE = re.compile(
+    rf"^[0-9a-f]{{{BIND_TOKEN_BYTES * 2}}}$",
+    re.IGNORECASE,
+)
+
+
+def is_bind_token_hex(s: str) -> bool:
+    """Токен привязки — hex от secrets.token_hex(BIND_TOKEN_BYTES)."""
+    return bool(s and _BIND_TOKEN_HEX_RE.match(s.strip()))
 
 
 def is_bot_admin(user_id: int) -> bool:

@@ -44,7 +44,7 @@ from core.max_helpers import (
 )
 from core.report_types import ReportKind, report_title
 from core.states import GuardStates
-from core.utils import max_group_message_ref
+from core.utils import is_bind_token_hex, max_group_message_ref
 from db.database import Database, ObjectRow
 import texts_ru as T
 from services.album_tasks import cancel_album_task, schedule_album_task
@@ -132,6 +132,7 @@ def _base_photo_data(kind: ReportKind, message) -> dict:
 
 
 async def _start_bind(message, context: BaseContext, token: str, db: Database) -> None:
+    token = token.strip().lower()
     object_id = await db.consume_bind_token(token)
     su = message.sender.user_id if message.sender else None
     if not object_id or su is None:
@@ -164,8 +165,15 @@ async def cmd_start(
     cancel_album_task(su)
     cancel_fallback_menu_task(su)
     arg = " ".join(args).strip() if args else ""
+    token: str | None = None
     if arg.startswith("bind_"):
-        return await _start_bind(message, context, arg.replace("bind_", "", 1), db)
+        rest = arg.replace("bind_", "", 1).strip()
+        if rest:
+            token = rest
+    elif arg and is_bind_token_hex(arg):
+        token = arg.strip().lower()
+    if token:
+        return await _start_bind(message, context, token, db)
     _, err = await guard_access(db, su)
     if err == "not_bound":
         return await message.answer(text=T.NOT_BOUND)

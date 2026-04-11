@@ -15,3 +15,9 @@ class AdminStates(StatesGroup):
     wait_guard_user_id = State()
     wait_group_chat_id = State()
     wait_group_name = State()
+
+
+class GroupStates(StatesGroup):
+    """Команды в группе объекта: двухшаговый /set."""
+
+    wait_object_name = State()

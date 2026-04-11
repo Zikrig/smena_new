@@ -157,7 +157,7 @@ async def cb_groups(event: MessageCallback, context: BaseContext, db: Database) 
     page = int((cb.payload or "").split(":")[-1])
     objs = await db.list_objects()
     if not objs:
-        text = "Групп (объектов) пока нет. Зарегистрируйте через кнопку ниже или /set_object в группе."
+        text = "Групп (объектов) пока нет. Зарегистрируйте через кнопку ниже или /set в группе."
     else:
         text = f"Группы (стр. {page + 1}): нажмите для деталей."
     await msg.edit(text=text, attachments=[_groups_kb(objs, page).as_markup()])
@@ -266,7 +266,7 @@ async def cb_users(event: MessageCallback, context: BaseContext, db: Database) -
     page = int((cb.payload or "").split(":")[-1])
     rows = await db.list_guards()
     if not rows:
-        text = "Охранников нет. Добавьте через «Привязать охранника» или ссылку /bind_guard."
+        text = "Охранников нет. Добавьте через «Привязать охранника» или ссылку из /bind в группе."
     else:
         text = f"Охранники (стр. {page + 1}). Нажмите, чтобы снять привязку."
     await msg.edit(text=text, attachments=[_users_kb(rows, page).as_markup()])
