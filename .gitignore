@@ -11,3 +11,5 @@ service_account.json
 .idea/
 .vscode/
 smena_sled/
+.logs/
+config.json

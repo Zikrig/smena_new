@@ -1,0 +1,37 @@
+ocale': 'ru', 'user_id': 26966880, 'update_type': 'bot_started'}
+max-forward-bot-1  | WARNING:  Invalid HTTP request received.
+max-forward-bot-1  | WARNING:  Invalid HTTP request received.
+max-forward-bot-1  | 2026-04-13 17:49:13 [INFO] MaxBot: Webhook bot_started: {'timestamp': 1776091752307, 'chat_id': 159111841, 'user': {'user_id': 76378025, 'first_name': 'Виктория', 'last_name': 'Степанова', 'is_bot': False, 'last_activity_time': 1776091753000, 'name': 'Виктория Степанова'}, 'user_locale': 'ru', 'user_id': 76378025, 'update_type': 'bot_started'}
+max-forward-bot-1  | 2026-04-13 18:20:15 [INFO] MaxBot: Webhook bot_started: {'timestamp': 1776093614652, 'chat_id': 216356745, 'user': {'user_id': 18080385, 'first_name': 'Татьяна Сергеевна', 'last_name': 'Юркевич', 'is_bot': False, 'last_activity_time': 1776093615000, 'avatar_url': 'https://i.oneme.ru/i?r=BUFglOvkF6bn--g5U-BFgIkJnkEqVmErQ9zGpemCTPXC5VNSo4Cai2hzXYmz9XtBdd4O7v71UMrKyXaeeNiEAyGi', 'full_avatar_url': 'https://i.oneme.ru/i?r=BTFjO43w8Yr1OSJ4tcurq5HinFWEG_rLFb-Z7gXEgbNYe8xjr7KImrol7X1zyCjoBIg', 'name': 'Татьяна Сергеевна Юркевич'}, 'user_locale': 'ru', 'user_id': 18080385, 'update_type': 'bot_started'} 
+max-forward-bot-1  | 2026-04-13 18:27:18 [INFO] MaxBot: Webhook bot_started: {'timestamp': 1776094037638, 'chat_id': 259481074, 'user': {'user_id': 42068218, 'first_name': 'Марина', 'last_name': 'Бутузова', 'is_bot': False, 'last_activity_time': 1776094038000, 'avatar_url': 'https://i.oneme.ru/i?r=BUFglOvkF6bn--g5U-BFgIkJP6qH0R-LzPv3PUKz71lo3IaI_NZHoaAWYnyNyE3K1B4O7v71UMrKyXaeeNiEAyGi', 'full_avatar_url': 'https://i.oneme.ru/i?r=BTFjO43w8Yr1OSJ4tcurq5HieJ-IZ2IdiLIUJvF1NOAaOMxjr7KImrol7X1zyCjoBIg', 'name': 'Марина Бутузова'}, 'user_locale': 'ru', 'user_id': 42068218, 'update_type': 'bot_started'}
+max-forward-bot-1  | 2026-04-13 18:32:14 [INFO] MaxBot: Webhook bot_started: {'timestamp': 1776094334114, 'chat_id': 212541200, 'user': {'user_id': 22915608, 'first_name': 'Анна', 'last_name': 'Маркова', 'is_bot': False, 'last_activity_time': 1776094334000, 'description': 'Первый мед. Разрабатываю персональные рационы. Антиэйджинг. Биохакинг. \n\nМои Вечные Сомнения https://max.ru/join/PiJDQUbRya-kQxZuc0JLUNhilB-LeWTlzCH_O_FEZXc', 'avatar_url': 'https://i.oneme.ru/i?r=BUFglOvkF6bn--g5U-BFgIkJnvO7xSWcxYpBBn_OZn5-il8NK2nLRdZ7RSEqd8shOnkO7v71UMrKyXaeeNiEAyGi', 'full_avatar_url': 'https://i.oneme.ru/i?r=BTFjO43w8Yr1OSJ4tcurq5HikdfNoGC3Zp0tVGQ978G6Csxjr7KImrol7X1zyCjoBIg', 'name': 'Анна Маркова'}, 'user_locale': 'ru', 'user_id': 22915608, 'update_type': 'bot_started'}
+max-forward-bot-1  | 2026-04-13 18:58:09 [INFO] MaxBot: Webhook bot_started: {'timestamp': 1776095888101, 'chat_id': 119452411, 'user': {'user_id': 182978547, 'first_name': 'Евгений', 'last_name': 'Гришуков', 'is_bot': False, 'last_activity_time': 1776095889000, 'avatar_url': 'https://i.oneme.ru/i?r=BUFglOvkF6bn--g5U-BFgIkJK6mx6ae5OiOa8c66MUn6oVA8D8u7d2mD93JVsAkZwUwO7v71UMrKyXaeeNiEAyGi', 'full_avatar_url': 'https://i.oneme.ru/i?r=BTFjO43w8Yr1OSJ4tcurq5Higk1ZWOm2rHQVNDkBnb6Q8cxjr7KImrol7X1zyCjoBIg', 'name': 'Евгений Гришуков'}, 'user_locale': 'ru', 'user_id': 182978547, 'update_type': 'bot_started'}
+max-forward-bot-1  | 2026-04-13 19:07:17 [INFO] MaxBot: Webhook bot_started: {'timestamp': 1776096436964, 'chat_id': 154933906, 'user': {'user_id': 80392090, 'first_name': 'Мария', 'last_name': 'Данилина', 'is_bot': False, 'last_activity_time': 1776096437000, 'description': 'Психолог\n\nhttps://t.me/lamiamelodia', 'avatar_url': 'https://i.oneme.ru/i?r=BUFglOvkF6bn--g5U-BFgIkJurIZ77naEGh9vm03hF3E0GYkSiWkRwVppkyIpYYzFrYO7v71UMrKyXaeeNiEAyGi', 'full_avatar_url': 'https://i.oneme.ru/i?r=BTFjO43w8Yr1OSJ4tcurq5HiBC_PcNaGIPmuYZYiPGN3H8xjr7KImrol7X1zyCjoBIg', 'name': 'Мария Данилина'}, 'user_locale': 'ru', 'user_id': 80392090, 'update_type': 'bot_started'}
+max-forward-bot-1  | 2026-04-13 19:08:43 [INFO] MaxBot: Config saved to file.
+max-forward-bot-1  | 2026-04-13 19:08:49 [INFO] MaxBot: Config saved to file.
+max-forward-bot-1  | 2026-04-13 19:08:53 [INFO] MaxBot: Config saved to file.
+max-forward-bot-1  | 2026-04-13 19:08:58 [INFO] MaxBot: Config saved to file.
+max-forward-bot-1  | 2026-04-13 19:09:05 [INFO] MaxBot: Config saved to file.
+max-forward-bot-1  | 2026-04-13 19:09:10 [INFO] MaxBot: Config saved to file.
+max-forward-bot-1  | 2026-04-13 19:09:15 [INFO] MaxBot: Config saved to file.
+max-forward-bot-1  | 2026-04-13 19:09:20 [INFO] MaxBot: Config saved to file.
+max-forward-bot-1  | 2026-04-13 19:31:35 [INFO] MaxBot: Webhook bot_started: {'timestamp': 1776097894998, 'chat_id': 228393779, 'user': {'user_id': 7059003, 'first_name': 'Dmitry', 'last_name': '', 'is_bot': False, 'last_activity_time': 1776097895000, 'avatar_url': 'https://i.oneme.ru/i?r=BUFglOvkF6bn--g5U-BFgIkJn615IrthSWsbSEixkqUx4KkwM6PbQ2iram5_czr56XEO7v71UMrKyXaeeNiEAyGi', 'full_avatar_url': 'https://i.oneme.ru/i?r=BTFjO43w8Yr1OSJ4tcurq5HiQ6DKXH29YaNSOy9hKalAXcxjr7KImrol7X1zyCjoBIg', 'name': 'Dmitry'}, 'user_locale': 'ru', 'user_id': 7059003, 'update_type': 'bot_started'}
+max-forward-bot-1  | 2026-04-13 19:36:43 [ERROR] MaxBot: Failed to send message to 5024858: Client error '404 Not Found' for url 'https://platform-api.max.ru/messages?user_id=5024858'
+max-forward-bot-1  | For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+max-forward-bot-1  | 2026-04-13 19:47:22 [INFO] MaxBot: members/me chat_id=-72521776419387 membership={"is_owner": false, "is_admin": true, "permissions": ["read_all_messages", "delete", "write", "pin_message", "edit"]}
+max-forward-bot-1  | 2026-04-13 19:47:22 [INFO] MaxBot: Канал chat_id=-72521776419387: проверка прав OK (explicit_edit_permission)
+max-forward-bot-1  | 2026-04-13 19:48:11 [INFO] MaxBot: members/me chat_id=-72520169148987 membership={"is_owner": false, "is_admin": true, "permissions": ["read_all_messages", "change_chat_info", "can_call", "write", "add_remove_members", "pin_message"]}
+max-forward-bot-1  | 2026-04-13 19:48:11 [INFO] MaxBot: Чат комментариев chat_id=-72520169148987: проверка прав OK (write)
+max-forward-bot-1  | 2026-04-13 19:48:11 [INFO] MaxBot: Config saved to file.
+max-forward-bot-1  | 2026-04-13 19:48:32 [INFO] MaxBot: MAX channel_post chat_id=-72521776419387: ключи message.body=['mid', 'seq', 'text'] | снимок полей про разметку: {}       
+max-forward-bot-1  | 2026-04-13 19:48:32 [INFO] MaxBot: MAX channel_post chat_id=-72521776419387: полный message.body (markup пустой — весь text и остальные поля):
+max-forward-bot-1  | {
+max-forward-bot-1  |   "mid": "mid.ffffbe0ab5472dc5019d87bea4962b6a",
+max-forward-bot-1  |   "seq": 116398418256341866,
+max-forward-bot-1  |   "text": "Тест"
+max-forward-bot-1  | }
+max-forward-bot-1  | 2026-04-13 19:48:32 [INFO] MaxBot: MAX channel_post chat_id=-72521776419387: входной text_format=None, spans=0 → канонический format=None (для трекера и API)
+max-forward-bot-1  | 2026-04-13 19:48:33 [INFO] MaxBot: MAX channel_post: ответ POST /messages (копия в чат) ключи body=['attachments', 'mid', 'seq', 'text'] | разметка: {}      
+max-forward-bot-1  | 2026-04-13 19:48:33 [INFO] MaxBot: process_channel_post channel mid=mid.ffffbe0ab5472dc5019d87bea4962b6a: ответ PUT /messages без message.body (keys=['success'])
+max-forward-bot-1  | 2026-04-13 19:48:33 [INFO] MaxBot: Config saved to file.
+root@cv6304089:~/max_users_resend#
