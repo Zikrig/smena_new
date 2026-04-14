@@ -17,7 +17,7 @@ router = Router(router_id="accounted")
 
 def _disabled_accounted_markup():
     b = InlineKeyboardBuilder()
-    b.add(CallbackButton(text="Откреплено", payload="a:noop"))
+    b.add(CallbackButton(text="***", payload="a:noop"))
     b.adjust(1)
     return b.as_markup()
 
@@ -50,22 +50,29 @@ def _replace_inline_keyboard(message):
 
 
 async def _disable_button_label(bot, message, message_mid: str) -> None:
-    # MAX иногда откатывает клавиатуру на старую версию спустя мгновение.
-    # Поэтому делаем несколько повторных правок с увеличивающейся паузой.
-    delays = (0.0, 0.4, 1.0, 2.0)
-    last_error = None
-    for delay in delays:
-        if delay > 0:
-            await asyncio.sleep(delay)
+    # 5 проходов за 10 секунд:
+    # 1) меняем кнопку на "***"
+    # 2) удаляем клавиатуру полностью
+    # Повторяем, т.к. MAX может откатывать edit.
+    for i in range(5):
+        target = message
+        if i > 0:
+            try:
+                target = await bot.get_message(message_mid)
+            except Exception:
+                target = message
+
         try:
-            target = message if delay == 0 else await bot.get_message(message_mid)
             await target.edit(attachments=_replace_inline_keyboard(target))
-            last_error = None
-        except Exception as exc:
-            last_error = exc
-            continue
-    if last_error is not None:
-        return
+        except Exception:
+            pass
+        try:
+            await target.edit(attachments=None)
+        except Exception:
+            pass
+
+        if i < 4:
+            await asyncio.sleep(2.0)
 
 
 async def _pin_next_in_queue(bot, db: Database, group_chat_id: int) -> None:

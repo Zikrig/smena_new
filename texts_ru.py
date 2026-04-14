@@ -206,7 +206,7 @@ GROUP_NOT_OBJECT = "Сначала зарегистрируйте объект: 
 
 INLINE_ACCOUNTED = "Открепить"
 
-UNPINNED_DONE = "Откреплено."
+UNPINNED_DONE = "***"
 
 # Заголовки отчётов в группе (п.11)
 REPORT_TITLE_START_SHIFT = "Начать смену"
