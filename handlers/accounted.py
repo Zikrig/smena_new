@@ -1,6 +1,5 @@
 from maxapi import F, Router
 from maxapi.context.base import BaseContext
-from maxapi.enums.attachment import AttachmentType
 from maxapi.types.updates.message_callback import MessageCallback
 
 import texts_ru as T
@@ -9,12 +8,6 @@ from db.database import Database
 from services import sheets
 
 router = Router(router_id="accounted")
-
-
-def _attachments_without_inline_kb(message) -> list:
-    body = getattr(message, "body", None)
-    atts = list(getattr(body, "attachments", None) or [])
-    return [a for a in atts if getattr(a, "type", None) != AttachmentType.INLINE_KEYBOARD]
 
 
 async def _pin_next_in_queue(bot, db: Database, group_chat_id: int) -> None:
@@ -64,11 +57,11 @@ async def accounted_click(event: MessageCallback, context: BaseContext, db: Data
         pass
     await db.pop_report_pin_queue_head(group_chat_id)
     try:
-        await msg.edit(attachments=_attachments_without_inline_kb(msg))
+        await msg.edit(attachments=None)
     except Exception:
         try:
             gm = await bot.get_message(message_mid)
-            await gm.edit(attachments=_attachments_without_inline_kb(gm))
+            await gm.edit(attachments=None)
         except Exception:
             pass
     await _pin_next_in_queue(bot, db, group_chat_id)
