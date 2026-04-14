@@ -600,24 +600,17 @@ async def photo_report_collect(event: MessageCreated, context: BaseContext) -> N
             )
             return
         can_take = max(0, HARD_PHOTO_LIMIT - len(entries))
-        if len(batch_entries) > can_take:
+        accepted = batch_entries[:can_take]
+        rejected = len(batch_entries) - len(accepted)
+        entries.extend(accepted)
+        await context.update_data(photo_entries=entries)
+        if rejected > 0:
             await send_explaining(
                 bot,
                 r.chat_id,
                 r.user_id,
-                T.PHOTO_LIMIT_CAN_ACCEPT_ONLY.format(n=can_take, hard=HARD_PHOTO_LIMIT),
+                T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=rejected),
             )
-            await refresh_service_menu(
-                bot,
-                r.chat_id,
-                r.user_id,
-                context,
-                show_photo_counter=True,
-                photo_count=len(entries),
-            )
-            return
-        entries.extend(batch_entries)
-        await context.update_data(photo_entries=entries)
         if len(entries) > SOFT_PHOTO_LIMIT and not data.get("soft_warned"):
             await context.update_data(soft_warned=True)
             await send_explaining(
@@ -786,23 +779,17 @@ async def message_scenario_photo(event: MessageCreated, context: BaseContext) ->
                 photo_count=0,
             )
         can_take = max(0, HARD_PHOTO_LIMIT - len(entries))
-        if len(batch_entries) > can_take:
+        accepted = batch_entries[:can_take]
+        rejected = len(batch_entries) - len(accepted)
+        entries.extend(accepted)
+        await context.update_data(photo_entries=entries)
+        if rejected > 0:
             await send_explaining(
                 bot,
                 r.chat_id,
                 r.user_id,
-                T.PHOTO_LIMIT_CAN_ACCEPT_ONLY.format(n=can_take, hard=HARD_PHOTO_LIMIT),
+                T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=rejected),
             )
-            return await refresh_service_menu(
-                bot,
-                r.chat_id,
-                r.user_id,
-                context,
-                show_photo_counter=False,
-                photo_count=0,
-            )
-        entries.extend(batch_entries)
-        await context.update_data(photo_entries=entries)
         return await refresh_service_menu(
             bot,
             r.chat_id,
@@ -1228,8 +1215,11 @@ async def svc_send_message(event: MessageCallback, context: BaseContext, db: Dat
             return
 
         await db.finalize_group_post_ref(ref_id, mid)
+        await db.enqueue_report_pin_ref(obj.group_chat_id, ref_id)
         link = max_group_message_ref(obj.group_chat_id, mid)
-        await _pin_report_message(bot, obj.group_chat_id, mid)
+        head_ref_id = await db.get_report_pin_queue_head(obj.group_chat_id)
+        if head_ref_id == ref_id:
+            await _pin_report_message(bot, obj.group_chat_id, mid)
 
         await _send_to_group_and_log(
             bot,

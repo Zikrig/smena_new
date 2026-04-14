@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS group_post_refs (
     group_chat_id INTEGER NOT NULL,
     message_id TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS report_pin_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_chat_id INTEGER NOT NULL,
+    ref_id INTEGER NOT NULL UNIQUE REFERENCES group_post_refs(id)
+);
 """
 
 
@@ -274,3 +280,49 @@ class Database:
         if not s or s == "0":
             return None
         return int(row["group_chat_id"]), s
+
+    async def enqueue_report_pin_ref(self, group_chat_id: int, ref_id: int) -> None:
+        await self._db.execute(
+            """
+            INSERT OR IGNORE INTO report_pin_queue (group_chat_id, ref_id)
+            VALUES (?, ?)
+            """,
+            (group_chat_id, ref_id),
+        )
+        await self._db.commit()
+
+    async def get_report_pin_queue_head(self, group_chat_id: int) -> Optional[int]:
+        cur = await self._db.execute(
+            """
+            SELECT ref_id
+            FROM report_pin_queue
+            WHERE group_chat_id = ?
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            (group_chat_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        return int(row["ref_id"])
+
+    async def pop_report_pin_queue_head(self, group_chat_id: int) -> Optional[int]:
+        cur = await self._db.execute(
+            """
+            SELECT id, ref_id
+            FROM report_pin_queue
+            WHERE group_chat_id = ?
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            (group_chat_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        qid = int(row["id"])
+        ref_id = int(row["ref_id"])
+        await self._db.execute("DELETE FROM report_pin_queue WHERE id = ?", (qid,))
+        await self._db.commit()
+        return ref_id

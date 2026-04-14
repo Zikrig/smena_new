@@ -1,5 +1,6 @@
 from maxapi import F, Router
 from maxapi.context.base import BaseContext
+from maxapi.enums.attachment import AttachmentType
 from maxapi.types.updates.message_callback import MessageCallback
 
 import texts_ru as T
@@ -8,6 +9,29 @@ from db.database import Database
 from services import sheets
 
 router = Router(router_id="accounted")
+
+
+def _attachments_without_inline_kb(message) -> list:
+    body = getattr(message, "body", None)
+    atts = list(getattr(body, "attachments", None) or [])
+    return [a for a in atts if getattr(a, "type", None) != AttachmentType.INLINE_KEYBOARD]
+
+
+async def _pin_next_in_queue(bot, db: Database, group_chat_id: int) -> None:
+    while True:
+        next_ref = await db.get_report_pin_queue_head(group_chat_id)
+        if next_ref is None:
+            return
+        next_pair = await db.get_group_post_ref(next_ref)
+        if not next_pair:
+            await db.pop_report_pin_queue_head(group_chat_id)
+            continue
+        _, next_mid = next_pair
+        try:
+            await bot.pin_message(group_chat_id, next_mid, notify=False)
+        except Exception:
+            pass
+        return
 
 
 @router.message_callback(F.callback.payload.startswith("a:"))
@@ -24,6 +48,9 @@ async def accounted_click(event: MessageCallback, context: BaseContext, db: Data
     if not pair:
         return await event.answer(notification="Нет данных")
     group_chat_id, message_mid = pair
+    queue_head_ref = await db.get_report_pin_queue_head(group_chat_id)
+    if queue_head_ref is not None and queue_head_ref != ref_id:
+        return await event.answer(notification="Сначала открепите текущий закреплённый отчёт.")
     r = msg.recipient
     if r.chat_id != group_chat_id:
         return await event.answer(notification="")
@@ -35,14 +62,16 @@ async def accounted_click(event: MessageCallback, context: BaseContext, db: Data
         await bot.delete_pin_message(group_chat_id)
     except Exception:
         pass
+    await db.pop_report_pin_queue_head(group_chat_id)
     try:
-        await msg.edit(attachments=[])
+        await msg.edit(attachments=_attachments_without_inline_kb(msg))
     except Exception:
         try:
             gm = await bot.get_message(message_mid)
-            await gm.edit(attachments=[])
+            await gm.edit(attachments=_attachments_without_inline_kb(gm))
         except Exception:
             pass
+    await _pin_next_in_queue(bot, db, group_chat_id)
 
     obj = await db.get_object_by_group(group_chat_id)
     if obj:
