@@ -31,7 +31,7 @@ def format_text_report_caption(kind: ReportKind, times: List[datetime], extra: s
     media = {
         ReportKind.START_SHIFT: "видео",
         ReportKind.POST_CHECK: "видео",
-        ReportKind.MESSAGE: "сообщение",
+        ReportKind.MESSAGE: "сообщение/медиа",
     }.get(kind, "сообщение")
     lines = [
         f"{em} {title}",

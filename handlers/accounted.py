@@ -36,10 +36,13 @@ async def accounted_click(event: MessageCallback, context: BaseContext, db: Data
     except Exception:
         pass
     try:
-        gm = await bot.get_message(message_mid)
-        await gm.edit(text=gm.body.text if gm.body else ".", attachments=[])
+        await msg.edit(attachments=[])
     except Exception:
-        pass
+        try:
+            gm = await bot.get_message(message_mid)
+            await gm.edit(attachments=[])
+        except Exception:
+            pass
 
     obj = await db.get_object_by_group(group_chat_id)
     if obj:
@@ -49,10 +52,10 @@ async def accounted_click(event: MessageCallback, context: BaseContext, db: Data
         link = max_group_message_ref(group_chat_id, message_mid)
         await sheets.log_event(
             obj.sheet_title,
-            "Учтено",
+            "Откреплено",
             who,
             link,
             "",
             accounted_by=who,
         )
-    await event.answer(notification=T.ACCOUNTED_DONE)
+    await event.answer(notification=T.UNPINNED_DONE)

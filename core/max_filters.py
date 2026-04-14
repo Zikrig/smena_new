@@ -46,7 +46,11 @@ class HasVideoAttachment(BaseFilter):
         ]
         if len(meaningful) != 1:
             return False
-        return getattr(meaningful[0], "type", None) == AttachmentType.VIDEO
+        t = getattr(meaningful[0], "type", None)
+        if t == AttachmentType.VIDEO:
+            return True
+        name = getattr(t, "name", str(t)).upper()
+        return "VIDEO" in name
 
 
 class HasAudioAttachment(BaseFilter):
@@ -54,9 +58,14 @@ class HasAudioAttachment(BaseFilter):
         body = event.message.body
         if not body or not body.attachments:
             return False
-        return any(
-            getattr(a, "type", None) == AttachmentType.AUDIO for a in body.attachments
-        )
+        for a in body.attachments:
+            t = getattr(a, "type", None)
+            if t == AttachmentType.AUDIO:
+                return True
+            name = getattr(t, "name", str(t)).upper()
+            if "AUDIO" in name or "VOICE" in name:
+                return True
+        return False
 
 
 class BodyTextNotCommand(BaseFilter):

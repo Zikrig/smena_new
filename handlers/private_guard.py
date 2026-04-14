@@ -470,15 +470,19 @@ async def _flush_album_to_entries(
         await context.update_data(album_buffer=[], album_group_id=None)
         return
     entries: List[dict] = list(data.get("photo_entries") or [])
-    if len(entries) + len(buf) > HARD_PHOTO_LIMIT:
-        can_take = max(0, HARD_PHOTO_LIMIT - len(entries))
-        await context.update_data(album_buffer=[], album_group_id=None)
-        await send_explaining(
-            bot,
-            chat_id,
-            user_id,
-            T.PHOTO_LIMIT_CAN_ACCEPT_ONLY.format(n=can_take, hard=HARD_PHOTO_LIMIT),
-        )
+    can_take = max(0, HARD_PHOTO_LIMIT - len(entries))
+    if len(buf) > can_take:
+        accepted = buf[:can_take]
+        rejected = len(buf) - len(accepted)
+        entries.extend(accepted)
+        await context.update_data(photo_entries=entries, album_buffer=[], album_group_id=None)
+        if rejected > 0:
+            await send_explaining(
+                bot,
+                chat_id,
+                user_id,
+                T.PHOTO_LIMIT_PARTIAL_ACCEPTED.format(n=rejected),
+            )
         await refresh_service_menu(
             bot,
             chat_id,
@@ -1205,23 +1209,20 @@ async def svc_send_message(event: MessageCallback, context: BaseContext, db: Dat
             kb = accounted_markup(f"a:{ref_id}")
             src = await bot.get_message(str(smid))
             sent = await src.forward(chat_id=obj.group_chat_id)
-            mid = sent.message.body.mid if sent and sent.message and sent.message.body else ""
+            media_mid = sent.message.body.mid if sent and sent.message and sent.message.body else ""
             extra = format_text_report_caption(ReportKind.MESSAGE, [datetime.now()])
-            if mid:
-                try:
-                    gm = await bot.get_message(mid)
-                    await gm.edit(
-                        text=extra,
-                        attachments=[kb],
-                        parse_mode=ParseMode.HTML,
-                    )
-                except Exception:
-                    try:
-                        gm2 = await bot.get_message(mid)
-                        await gm2.edit(attachments=[kb])
-                    except Exception:
-                        pass
-                    await bot.send_message(chat_id=obj.group_chat_id, text=extra)
+            linked = (
+                NewMessageLink(type=MessageLinkType.REPLY, mid=media_mid) if media_mid else None
+            )
+            info_msg = await bot.send_message(
+                chat_id=obj.group_chat_id,
+                text=extra,
+                attachments=[kb],
+                link=linked,
+            )
+            mid = info_msg.message.body.mid if info_msg and info_msg.message and info_msg.message.body else ""
+            if not mid:
+                mid = media_mid
         else:
             await send_explaining(bot, r.chat_id, r.user_id, "Сначала отправьте содержимое отчёта.")
             return

@@ -204,9 +204,9 @@ ALREADY_BOUND = "Вы уже привязаны к объекту."
 
 GROUP_NOT_OBJECT = "Сначала зарегистрируйте объект: команда /set, затем название отдельным сообщением."
 
-INLINE_ACCOUNTED = "Учтено"
+INLINE_ACCOUNTED = "Открепить"
 
-ACCOUNTED_DONE = "Отмечено."
+UNPINNED_DONE = "Откреплено."
 
 # Заголовки отчётов в группе (п.11)
 REPORT_TITLE_START_SHIFT = "Начать смену"
