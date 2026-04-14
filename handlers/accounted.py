@@ -3,8 +3,6 @@ import asyncio
 from maxapi import F, Router
 from maxapi.context.base import BaseContext
 from maxapi.enums.attachment import AttachmentType
-from maxapi.types.attachments.buttons.callback_button import CallbackButton
-from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 from maxapi.types.updates.message_callback import MessageCallback
 
 import texts_ru as T
@@ -13,13 +11,6 @@ from db.database import Database
 from services import sheets
 
 router = Router(router_id="accounted")
-
-
-def _disabled_accounted_markup():
-    b = InlineKeyboardBuilder()
-    b.add(CallbackButton(text="Откреплено", payload="a:noop"))
-    b.adjust(1)
-    return b.as_markup()
 
 
 def _is_inline_keyboard_attachment(attachment) -> bool:
@@ -35,17 +26,10 @@ def _replace_inline_keyboard(message):
     body = getattr(message, "body", None)
     atts = list(getattr(body, "attachments", None) or [])
     replaced = []
-    switched = False
-    disabled = _disabled_accounted_markup()
     for a in atts:
         if _is_inline_keyboard_attachment(a):
-            if not switched:
-                replaced.append(disabled)
-                switched = True
             continue
         replaced.append(a)
-    if not switched:
-        replaced.append(disabled)
     return replaced
 
 
