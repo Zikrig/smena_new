@@ -1,3 +1,5 @@
+import asyncio
+
 from maxapi import F, Router
 from maxapi.context.base import BaseContext
 from maxapi.enums.attachment import AttachmentType
@@ -36,6 +38,26 @@ def _replace_inline_keyboard(message):
     if not switched:
         replaced.append(disabled)
     return replaced
+
+
+async def _disable_button_label(bot, message, message_mid: str) -> None:
+    try:
+        await message.edit(attachments=_replace_inline_keyboard(message))
+    except Exception:
+        try:
+            gm = await bot.get_message(message_mid)
+            await gm.edit(attachments=_replace_inline_keyboard(gm))
+        except Exception:
+            return
+
+    # MAX иногда возвращает старое состояние кнопки спустя мгновение.
+    # Повторяем edit после короткой паузы, чтобы зафиксировать "***".
+    try:
+        await asyncio.sleep(0.8)
+        gm2 = await bot.get_message(message_mid)
+        await gm2.edit(attachments=_replace_inline_keyboard(gm2))
+    except Exception:
+        pass
 
 
 async def _pin_next_in_queue(bot, db: Database, group_chat_id: int) -> None:
@@ -84,14 +106,7 @@ async def accounted_click(event: MessageCallback, context: BaseContext, db: Data
     except Exception:
         pass
     await db.pop_report_pin_queue_head(group_chat_id)
-    try:
-        await msg.edit(attachments=_replace_inline_keyboard(msg))
-    except Exception:
-        try:
-            gm = await bot.get_message(message_mid)
-            await gm.edit(attachments=_replace_inline_keyboard(gm))
-        except Exception:
-            pass
+    await _disable_button_label(bot, msg, message_mid)
     await _pin_next_in_queue(bot, db, group_chat_id)
 
     obj = await db.get_object_by_group(group_chat_id)
