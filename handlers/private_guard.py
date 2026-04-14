@@ -924,17 +924,27 @@ async def svc_cancel(event: MessageCallback, context: BaseContext) -> None:
     msg = event.message
     if msg:
         r = msg.recipient
-        await clear_service_menu_message(msg.bot, r.chat_id, r.user_id, context)
         await clear_submenu_instructions(msg.bot, context)
-        await msg.answer(text=T.ACTION_CANCELLED)
-        await send_or_replace_main_menu(
-            msg.bot,
-            r.chat_id,
-            r.user_id,
-            context,
-            text=T.BOT_DESCRIPTION,
-            attachments=[main_menu_keyboard()],
-        )
+        main_mid: str | None = None
+        try:
+            await msg.edit(text=T.BOT_DESCRIPTION, attachments=[main_menu_keyboard()])
+            main_mid = message_mid(msg)
+        except Exception:
+            await clear_service_menu_message(msg.bot, r.chat_id, r.user_id, context)
+            await send_or_replace_main_menu(
+                msg.bot,
+                r.chat_id,
+                r.user_id,
+                context,
+                text=T.BOT_DESCRIPTION,
+                attachments=[main_menu_keyboard()],
+            )
+            data = await context.get_data()
+            main_mid = data.get("main_menu_message_id")
+        await context.clear()
+        if main_mid:
+            await context.update_data(main_menu_message_id=main_mid)
+        return
     await context.clear()
 
 

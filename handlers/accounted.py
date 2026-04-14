@@ -17,9 +17,18 @@ router = Router(router_id="accounted")
 
 def _disabled_accounted_markup():
     b = InlineKeyboardBuilder()
-    b.add(CallbackButton(text="***", payload="a:noop"))
+    b.add(CallbackButton(text="Откреплено", payload="a:noop"))
     b.adjust(1)
     return b.as_markup()
+
+
+def _is_inline_keyboard_attachment(attachment) -> bool:
+    if getattr(attachment, "type", None) == AttachmentType.INLINE_KEYBOARD:
+        return True
+    if getattr(attachment, "buttons", None) is not None:
+        return True
+    cls_name = type(attachment).__name__.lower()
+    return "keyboard" in cls_name
 
 
 def _replace_inline_keyboard(message):
@@ -29,7 +38,7 @@ def _replace_inline_keyboard(message):
     switched = False
     disabled = _disabled_accounted_markup()
     for a in atts:
-        if getattr(a, "type", None) == AttachmentType.INLINE_KEYBOARD:
+        if _is_inline_keyboard_attachment(a):
             if not switched:
                 replaced.append(disabled)
                 switched = True
@@ -41,23 +50,22 @@ def _replace_inline_keyboard(message):
 
 
 async def _disable_button_label(bot, message, message_mid: str) -> None:
-    try:
-        await message.edit(attachments=_replace_inline_keyboard(message))
-    except Exception:
+    # MAX иногда откатывает клавиатуру на старую версию спустя мгновение.
+    # Поэтому делаем несколько повторных правок с увеличивающейся паузой.
+    delays = (0.0, 0.4, 1.0, 2.0)
+    last_error = None
+    for delay in delays:
+        if delay > 0:
+            await asyncio.sleep(delay)
         try:
-            gm = await bot.get_message(message_mid)
-            await gm.edit(attachments=_replace_inline_keyboard(gm))
-        except Exception:
-            return
-
-    # MAX иногда возвращает старое состояние кнопки спустя мгновение.
-    # Повторяем edit после короткой паузы, чтобы зафиксировать "***".
-    try:
-        await asyncio.sleep(0.8)
-        gm2 = await bot.get_message(message_mid)
-        await gm2.edit(attachments=_replace_inline_keyboard(gm2))
-    except Exception:
-        pass
+            target = message if delay == 0 else await bot.get_message(message_mid)
+            await target.edit(attachments=_replace_inline_keyboard(target))
+            last_error = None
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error is not None:
+        return
 
 
 async def _pin_next_in_queue(bot, db: Database, group_chat_id: int) -> None:
