@@ -70,11 +70,11 @@ async def _disable_button_label(bot, message, message_mid: str) -> None:
             await asyncio.sleep(2.0)
 
 
-async def _pin_next_in_queue(bot, db: Database, group_chat_id: int) -> None:
+async def _pin_next_in_queue(bot, db: Database, group_chat_id: int) -> bool:
     while True:
         next_ref = await db.get_report_pin_queue_head(group_chat_id)
         if next_ref is None:
-            return
+            return False
         next_pair = await db.get_group_post_ref(next_ref)
         if not next_pair:
             await db.pop_report_pin_queue_head(group_chat_id)
@@ -84,7 +84,7 @@ async def _pin_next_in_queue(bot, db: Database, group_chat_id: int) -> None:
             await bot.pin_message(group_chat_id, next_mid, notify=False)
         except Exception:
             pass
-        return
+        return True
 
 
 @router.message_callback(F.callback.payload.startswith("a:"))
@@ -111,13 +111,16 @@ async def accounted_click(event: MessageCallback, context: BaseContext, db: Data
         return await event.answer(notification=T.BOT_ADMIN_ONLY)
 
     bot = event._ensure_bot()
-    try:
-        await bot.delete_pin_message(group_chat_id)
-    except Exception:
-        pass
     await db.pop_report_pin_queue_head(group_chat_id)
+    pinned_next = await _pin_next_in_queue(bot, db, group_chat_id)
+    if not pinned_next:
+        try:
+            await bot.delete_pin_message(group_chat_id)
+        except Exception:
+            pass
+    else:
+        await asyncio.sleep(2.0)
     await _disable_button_label(bot, msg, message_mid)
-    await _pin_next_in_queue(bot, db, group_chat_id)
 
     obj = await db.get_object_by_group(group_chat_id)
     if obj:
