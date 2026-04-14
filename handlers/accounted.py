@@ -49,6 +49,14 @@ def _replace_inline_keyboard(message):
     return replaced
 
 
+def _append_processed_text(message) -> str:
+    body = getattr(message, "body", None)
+    base = (getattr(body, "text", None) or "").rstrip()
+    if "Обработано" in base:
+        return base
+    return f"{base}\nОбработано" if base else "Обработано"
+
+
 async def _disable_button_label(bot, message, message_mid: str) -> None:
     # 5 проходов за 10 секунд:
     # меняем кнопку на "***" (без удаления клавиатуры).
@@ -62,7 +70,10 @@ async def _disable_button_label(bot, message, message_mid: str) -> None:
                 target = message
 
         try:
-            await target.edit(attachments=_replace_inline_keyboard(target))
+            await target.edit(
+                text=_append_processed_text(target),
+                attachments=_replace_inline_keyboard(target),
+            )
         except Exception:
             pass
 
