@@ -10,5 +10,4 @@ services:
       DATABASE_PATH: /app/data/guard_bot.db
     volumes:
       - ./data:/app/data
-      - ./config.json:/app/config.json
     # При необходимости пробросьте JSON ключа в data/service_account.json на хосте
