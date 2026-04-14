@@ -1,5 +1,8 @@
 from maxapi import F, Router
 from maxapi.context.base import BaseContext
+from maxapi.enums.attachment import AttachmentType
+from maxapi.types.attachments.buttons.callback_button import CallbackButton
+from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 from maxapi.types.updates.message_callback import MessageCallback
 
 import texts_ru as T
@@ -8,6 +11,31 @@ from db.database import Database
 from services import sheets
 
 router = Router(router_id="accounted")
+
+
+def _disabled_accounted_markup():
+    b = InlineKeyboardBuilder()
+    b.add(CallbackButton(text="***", payload="a:noop"))
+    b.adjust(1)
+    return b.as_markup()
+
+
+def _replace_inline_keyboard(message):
+    body = getattr(message, "body", None)
+    atts = list(getattr(body, "attachments", None) or [])
+    replaced = []
+    switched = False
+    disabled = _disabled_accounted_markup()
+    for a in atts:
+        if getattr(a, "type", None) == AttachmentType.INLINE_KEYBOARD:
+            if not switched:
+                replaced.append(disabled)
+                switched = True
+            continue
+        replaced.append(a)
+    if not switched:
+        replaced.append(disabled)
+    return replaced
 
 
 async def _pin_next_in_queue(bot, db: Database, group_chat_id: int) -> None:
@@ -57,11 +85,11 @@ async def accounted_click(event: MessageCallback, context: BaseContext, db: Data
         pass
     await db.pop_report_pin_queue_head(group_chat_id)
     try:
-        await msg.edit(attachments=None)
+        await msg.edit(attachments=_replace_inline_keyboard(msg))
     except Exception:
         try:
             gm = await bot.get_message(message_mid)
-            await gm.edit(attachments=None)
+            await gm.edit(attachments=_replace_inline_keyboard(gm))
         except Exception:
             pass
     await _pin_next_in_queue(bot, db, group_chat_id)
