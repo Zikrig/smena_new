@@ -51,8 +51,7 @@ def _replace_inline_keyboard(message):
 
 async def _disable_button_label(bot, message, message_mid: str) -> None:
     # 5 проходов за 10 секунд:
-    # 1) меняем кнопку на "***"
-    # 2) удаляем клавиатуру полностью
+    # меняем кнопку на "***" (без удаления клавиатуры).
     # Повторяем, т.к. MAX может откатывать edit.
     for i in range(5):
         target = message
@@ -64,10 +63,6 @@ async def _disable_button_label(bot, message, message_mid: str) -> None:
 
         try:
             await target.edit(attachments=_replace_inline_keyboard(target))
-        except Exception:
-            pass
-        try:
-            await target.edit(attachments=None)
         except Exception:
             pass
 
