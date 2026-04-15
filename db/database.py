@@ -109,7 +109,7 @@ class Database:
     @staticmethod
     def _slug_sheet_title(name: str, chat_id: int) -> str:
         safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in name)[:80]
-        return f"{safe or 'object'}_{abs(chat_id) % 10_000_000}"
+        return safe or "object"
 
     def _row_to_object(self, row) -> ObjectRow:
         return ObjectRow(
@@ -175,6 +175,22 @@ class Database:
         await self._db.commit()
 
     async def delete_object(self, object_id: int) -> None:
+        cur = await self._db.execute(
+            "SELECT group_chat_id FROM objects WHERE id = ?",
+            (object_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return
+        gid = int(row["group_chat_id"])
+        await self._db.execute(
+            "DELETE FROM report_pin_queue WHERE group_chat_id = ?",
+            (gid,),
+        )
+        await self._db.execute(
+            "DELETE FROM group_post_refs WHERE group_chat_id = ?",
+            (gid,),
+        )
         await self._db.execute("DELETE FROM bind_tokens WHERE object_id = ?", (object_id,))
         await self._db.execute("DELETE FROM guards WHERE object_id = ?", (object_id,))
         await self._db.execute("DELETE FROM objects WHERE id = ?", (object_id,))

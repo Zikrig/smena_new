@@ -137,8 +137,6 @@ async def _start_bind(message, context: BaseContext, token: str, db: Database) -
     su = message.sender.user_id if message.sender else None
     if not object_id or su is None:
         return await message.answer(text=T.BIND_INVALID)
-    if await db.get_guard_object_id(su):
-        return await message.answer(text=T.ALREADY_BOUND)
     await db.bind_guard(su, object_id)
     obj = await db.get_object_by_id(object_id)
     await message.answer(text=T.BIND_OK.format(name=obj.name if obj else "?"))
