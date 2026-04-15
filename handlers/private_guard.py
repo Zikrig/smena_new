@@ -200,12 +200,11 @@ async def _enter_photo_scenario(message, context: BaseContext, kind: ReportKind)
     await context.set_state(GuardStates.photo_report)
     await context.update_data(**_base_photo_data(kind, message))
     title = report_title(kind)
-    await send_submenu_instruction(
+    await send_explaining(
         message.bot,
         message.recipient.chat_id,
         message.recipient.user_id,
-        context,
-        text=T.REPORT_STARTED.format(report_title=title),
+        T.REPORT_STARTED.format(report_title=title),
     )
     hint = None
     if kind == ReportKind.HANDOVER:
@@ -247,12 +246,11 @@ async def _enter_video_scenario(message, context: BaseContext, kind: ReportKind)
         **_peer_data(message),
     )
     title = report_title(kind)
-    await send_submenu_instruction(
+    await send_explaining(
         message.bot,
         message.recipient.chat_id,
         message.recipient.user_id,
-        context,
-        text=T.REPORT_STARTED.format(report_title=title),
+        T.REPORT_STARTED.format(report_title=title),
     )
     hint = None
     if kind == ReportKind.START_SHIFT:
@@ -296,12 +294,11 @@ async def _enter_message_scenario(message, context: BaseContext) -> None:
         message_text_body=None,
         **_peer_data(message),
     )
-    await send_submenu_instruction(
+    await send_explaining(
         message.bot,
         message.recipient.chat_id,
         message.recipient.user_id,
-        context,
-        text=T.REPORT_STARTED.format(report_title=report_title(ReportKind.MESSAGE)),
+        T.REPORT_STARTED.format(report_title=report_title(ReportKind.MESSAGE)),
     )
     await send_submenu_instruction(
         message.bot,

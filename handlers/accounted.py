@@ -115,6 +115,9 @@ async def accounted_click(event: MessageCallback, context: BaseContext, db: Data
     queue_head_ref = await db.get_report_pin_queue_head(group_chat_id)
     if queue_head_ref is not None and queue_head_ref != ref_id:
         return await event.answer(notification="Сначала открепите текущий закреплённый отчёт.")
+    body_text = (getattr(msg.body, "text", None) or "")
+    if "Обработано" in body_text:
+        return await event.answer(notification="")
     r = msg.recipient
     if r.chat_id != group_chat_id:
         return await event.answer(notification="")
@@ -122,7 +125,10 @@ async def accounted_click(event: MessageCallback, context: BaseContext, db: Data
         return await event.answer(notification=T.BOT_ADMIN_ONLY)
 
     bot = event._ensure_bot()
-    await db.pop_report_pin_queue_head(group_chat_id)
+    popped_ref = await db.pop_report_pin_queue_head(group_chat_id)
+    if popped_ref != ref_id:
+        # Повторное нажатие после открепления, гонка колбэков или пустая очередь — без дублей в Sheets.
+        return await event.answer(notification="")
     pinned_next = await _pin_next_in_queue(bot, db, group_chat_id)
     if not pinned_next:
         try:
