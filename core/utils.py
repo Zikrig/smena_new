@@ -65,5 +65,15 @@ async def is_collective_chat_operator(
 
 
 def max_group_message_ref(chat_id: int, message_mid: str) -> str:
-    """Ссылка/идентификатор сообщения в группе MAX для логов (не публичный URL)."""
-    return f"max:chat:{chat_id}:msg:{message_mid}"
+    """
+    Публичная ссылка на сообщение в группе MAX для логов (Google Sheets и т.п.).
+    Формат: https://max.ru/c/{comments_chat_id}/{short_message_id}
+    """
+    mid = (message_mid or "").strip()
+    if mid.startswith("mid."):
+        short = mid[4:]
+    else:
+        short = mid
+    if not short or short == "?":
+        short = "unknown"
+    return f"https://max.ru/c/{chat_id}/{short}"
