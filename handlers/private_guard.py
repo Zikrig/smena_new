@@ -951,8 +951,10 @@ async def _send_photos_in_album_chunks(
     entries: List[dict],
     caption_on_first: str,
     reply_markup_first: Optional[Any] = None,
-) -> str:
+) -> tuple[str, Any]:
+    """Первое сообщение альбома: (mid, seq из body для ссылки max.ru/c/...)."""
     first_mid: Optional[str] = None
+    first_seq: Any = None
     for start in range(0, len(entries), MEDIA_GROUP_CHUNK_MAX):
         if start > 0:
             await asyncio.sleep(SECONDS_BETWEEN_MEDIA_GROUPS)
@@ -971,10 +973,12 @@ async def _send_photos_in_album_chunks(
             attachments=atts if atts else None,
         )
         if sent and sent.message and sent.message.body:
+            b = sent.message.body
             if first_mid is None:
-                first_mid = sent.message.body.mid
+                first_mid = b.mid
+                first_seq = getattr(b, "seq", None)
     assert first_mid is not None
-    return first_mid
+    return first_mid, first_seq
 
 
 async def _send_to_group_and_log(
@@ -1027,13 +1031,13 @@ async def svc_send_photo(event: MessageCallback, context: BaseContext, db: Datab
 
     try:
         caption = format_group_caption(kind, len(entries), [e["dt"] for e in entries])
-        first_mid = await _send_photos_in_album_chunks(
+        first_mid, seq = await _send_photos_in_album_chunks(
             bot,
             obj.group_chat_id,
             entries,
             caption,
         )
-        link = max_group_message_ref(obj.group_chat_id, first_mid)
+        link = max_group_message_ref(obj.group_chat_id, first_mid, seq=seq)
         await _send_to_group_and_log(
             bot,
             db,
@@ -1091,7 +1095,9 @@ async def svc_send_video(event: MessageCallback, context: BaseContext, db: Datab
         cap = format_text_report_caption(kind, times)
         src = await bot.get_message(ids[0])
         sent = await src.forward(chat_id=obj.group_chat_id)
-        mid = sent.message.body.mid if sent and sent.message and sent.message.body else ""
+        body_fwd = sent.message.body if sent and sent.message else None
+        mid = body_fwd.mid if body_fwd else ""
+        seq = getattr(body_fwd, "seq", None) if body_fwd else None
         if mid:
             await bot.send_message(
                 chat_id=obj.group_chat_id,
@@ -1100,7 +1106,7 @@ async def svc_send_video(event: MessageCallback, context: BaseContext, db: Datab
             )
         else:
             await bot.send_message(chat_id=obj.group_chat_id, text=cap)
-        link = max_group_message_ref(obj.group_chat_id, mid or "?")
+        link = max_group_message_ref(obj.group_chat_id, mid or "?", seq=seq)
         await _send_to_group_and_log(
             bot,
             db,
@@ -1165,6 +1171,7 @@ async def svc_send_message(event: MessageCallback, context: BaseContext, db: Dat
     try:
         ref_id: int
         mid: str
+        seq: Any = None
         if locked == "photo":
             entries = list(data.get("photo_entries") or [])
             if not entries:
@@ -1173,7 +1180,7 @@ async def svc_send_message(event: MessageCallback, context: BaseContext, db: Dat
             ref_id = await db.create_group_post_ref_pending(obj.group_chat_id)
             kb = accounted_markup(f"a:{ref_id}")
             caption = format_text_report_caption(ReportKind.MESSAGE, [e["dt"] for e in entries])
-            mid = await _send_photos_in_album_chunks(
+            mid, seq = await _send_photos_in_album_chunks(
                 bot,
                 obj.group_chat_id,
                 entries,
@@ -1193,7 +1200,9 @@ async def svc_send_message(event: MessageCallback, context: BaseContext, db: Dat
                 text=f"{header}\n\n{body}",
                 attachments=[kb],
             )
-            mid = sent.message.body.mid if sent and sent.message and sent.message.body else ""
+            body_sent = sent.message.body if sent and sent.message else None
+            mid = body_sent.mid if body_sent else ""
+            seq = getattr(body_sent, "seq", None) if body_sent else None
         elif locked in ("video", "voice"):
             smid = data.get("single_msg_id")
             if not smid:
@@ -1203,7 +1212,9 @@ async def svc_send_message(event: MessageCallback, context: BaseContext, db: Dat
             kb = accounted_markup(f"a:{ref_id}")
             src = await bot.get_message(str(smid))
             sent = await src.forward(chat_id=obj.group_chat_id)
-            media_mid = sent.message.body.mid if sent and sent.message and sent.message.body else ""
+            body_fwd = sent.message.body if sent and sent.message else None
+            media_mid = body_fwd.mid if body_fwd else ""
+            seq_fwd = getattr(body_fwd, "seq", None) if body_fwd else None
             extra = format_text_report_caption(ReportKind.MESSAGE, [datetime.now()])
             linked = (
                 NewMessageLink(type=MessageLinkType.REPLY, mid=media_mid) if media_mid else None
@@ -1214,16 +1225,19 @@ async def svc_send_message(event: MessageCallback, context: BaseContext, db: Dat
                 attachments=[kb],
                 link=linked,
             )
-            mid = info_msg.message.body.mid if info_msg and info_msg.message and info_msg.message.body else ""
+            body_info = info_msg.message.body if info_msg and info_msg.message else None
+            mid = body_info.mid if body_info else ""
+            seq = getattr(body_info, "seq", None) if body_info else None
             if not mid:
                 mid = media_mid
+                seq = seq_fwd
         else:
             await send_explaining(bot, r.chat_id, r.user_id, "Сначала отправьте содержимое отчёта.")
             return
 
         await db.finalize_group_post_ref(ref_id, mid)
         await db.enqueue_report_pin_ref(obj.group_chat_id, ref_id)
-        link = max_group_message_ref(obj.group_chat_id, mid)
+        link = max_group_message_ref(obj.group_chat_id, mid, seq=seq)
         head_ref_id = await db.get_report_pin_queue_head(obj.group_chat_id)
         if head_ref_id == ref_id:
             await _pin_report_message(bot, obj.group_chat_id, mid)

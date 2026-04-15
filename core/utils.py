@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
 import logging
 import re
+import struct
+from typing import Any, Optional
 
 from constants import BIND_TOKEN_BYTES
 from maxapi.enums.chat_type import ChatType
@@ -64,16 +67,45 @@ async def is_collective_chat_operator(
     return ok
 
 
-def max_group_message_ref(chat_id: int, message_mid: str) -> str:
+def get_short_id(seq: Any) -> Optional[str]:
     """
-    Публичная ссылка на сообщение в группе MAX для логов (Google Sheets и т.п.).
+    seq из body ответа API (например forwarded['body']['seq']): int → 8 байт BE →
+    url-safe base64 без хвостовых =.
+    """
+    if seq is None:
+        return None
+    try:
+        n = int(seq)
+        raw = struct.pack(">Q", n)
+        return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+    except (ValueError, TypeError, struct.error, OverflowError):
+        return None
+
+
+def _mid_tail_fallback(mid: Any) -> str:
+    """Часть mid после последней точки (как str(body['mid']).split('.')[-1])."""
+    if mid is None:
+        return ""
+    s = str(mid).strip()
+    if not s:
+        return ""
+    return s.split(".")[-1]
+
+
+def short_message_id_for_url(seq: Any, mid: Any) -> str:
+    """get_short_id(seq) или хвост mid; для логов в Sheets."""
+    sid = get_short_id(seq)
+    if sid:
+        return sid
+    tail = _mid_tail_fallback(mid)
+    return tail if tail else "unknown"
+
+
+def max_group_message_ref(chat_id: int, message_mid: str, seq: Any = None) -> str:
+    """
+    Публичная ссылка на сообщение в MAX для логов (Google Sheets и т.п.).
     Формат: https://max.ru/c/{comments_chat_id}/{short_message_id}
+    short_message_id: из seq (get_short_id) при наличии, иначе хвост mid после последней точки.
     """
-    mid = (message_mid or "").strip()
-    if mid.startswith("mid."):
-        short = mid[4:]
-    else:
-        short = mid
-    if not short or short == "?":
-        short = "unknown"
+    short = short_message_id_for_url(seq, message_mid)
     return f"https://max.ru/c/{chat_id}/{short}"
