@@ -949,14 +949,17 @@ async def _send_photos_in_album_chunks(
     entries: List[dict],
     caption_on_first: str,
     reply_markup_first: Optional[Any] = None,
+    report_type_label: Optional[str] = None,
 ) -> tuple[str, Any]:
     """Первое сообщение альбома: (mid, seq из body для ссылки max.ru/c/...)."""
     first_mid: Optional[str] = None
     first_seq: Any = None
+    total_chunks = (len(entries) + MEDIA_GROUP_CHUNK_MAX - 1) // MEDIA_GROUP_CHUNK_MAX
     for start in range(0, len(entries), MEDIA_GROUP_CHUNK_MAX):
         if start > 0:
             await asyncio.sleep(SECONDS_BETWEEN_MEDIA_GROUPS)
         chunk = entries[start : start + MEDIA_GROUP_CHUNK_MAX]
+        chunk_index = start // MEDIA_GROUP_CHUNK_MAX + 1
         rm = reply_markup_first if start == 0 else None
         atts: list = []
         for e in chunk:
@@ -964,11 +967,25 @@ async def _send_photos_in_album_chunks(
             atts.append(InputMediaBuffer(buf, filename="report.jpg"))
         if rm:
             atts.append(rm)
-        cap = caption_on_first if start == 0 else None
+        if start == 0:
+            cap = caption_on_first
+            link = None
+        else:
+            cap = (
+                "Продолжение отчёта\n"
+                f"Тип: {report_type_label or 'не указан'}\n"
+                f"Часть {chunk_index}/{total_chunks}"
+            )
+            link = (
+                NewMessageLink(type=MessageLinkType.REPLY, mid=first_mid)
+                if first_mid
+                else None
+            )
         sent = await bot.send_message(
             chat_id=chat_id,
             text=cap,
             attachments=atts if atts else None,
+            link=link,
         )
         if sent and sent.message and sent.message.body:
             b = sent.message.body
@@ -1034,6 +1051,7 @@ async def svc_send_photo(event: MessageCallback, context: BaseContext, db: Datab
             obj.group_chat_id,
             entries,
             caption,
+            report_type_label=report_title(kind),
         )
         link = max_group_message_ref(obj.group_chat_id, first_mid, seq=seq)
         await _send_to_group_and_log(
@@ -1184,6 +1202,7 @@ async def svc_send_message(event: MessageCallback, context: BaseContext, db: Dat
                 entries,
                 caption,
                 reply_markup_first=kb,
+                report_type_label=report_title(ReportKind.MESSAGE),
             )
         elif locked == "text":
             body = data.get("message_text_body")

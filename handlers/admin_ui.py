@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any
 
 from maxapi import F, Router
 from maxapi.context.base import BaseContext
@@ -11,7 +11,6 @@ from maxapi.enums.parse_mode import ParseMode
 from maxapi.filters.command import Command
 from maxapi.types.attachments.buttons.callback_button import CallbackButton
 from maxapi.types.updates.message_callback import MessageCallback
-from maxapi.bot import Bot
 from maxapi.types.updates.message_created import MessageCreated
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
@@ -26,49 +25,30 @@ router = Router(router_id="admin_ui")
 PAGE = 6
 
 
-async def _delete_message_safe(bot: Bot, mid: Optional[str]) -> None:
-    if not mid:
-        return
+async def _cb_notify(event: MessageCallback, notification: str = " ") -> None:
+    """Подтверждает callback без подмешивания старых attachments."""
     try:
-        await bot.delete_message(str(mid))
+        await event._ensure_bot().send_callback(
+            callback_id=event.callback.callback_id,
+            message=None,
+            notification=notification or " ",
+        )
     except Exception:
-        pass
+        await event.answer(notification=notification)
 
 
-def _callback_message_mid(msg) -> Optional[str]:
-    if msg is None or msg.body is None:
-        return None
-    return getattr(msg.body, "mid", None)
-
-
-async def _admin_resend_message(
-    bot: Bot,
-    msg,
-    *,
-    text: str,
-    attachments: Optional[list[Any]] = None,
-    parse_mode: Optional[ParseMode] = None,
-) -> None:
-    """Удалить сообщение с кнопками и отправить новое — вместо edit, чтобы не «мерцали» клавиатуры."""
-    await _delete_message_safe(bot, _callback_message_mid(msg))
-    r = msg.recipient
-    kwargs: dict[str, Any] = {
-        "chat_id": r.chat_id,
-        "user_id": r.user_id,
-        "text": text,
-    }
-    if attachments:
-        kwargs["attachments"] = attachments
-    if parse_mode is not None:
-        kwargs["parse_mode"] = parse_mode
-    await bot.send_message(**kwargs)
-
-
-async def _admin_resend_from_callback(event: MessageCallback, **kwargs: Any) -> None:
+async def _admin_edit_from_callback(event: MessageCallback, **kwargs: Any) -> None:
     msg = event.message
-    if msg is None:
+    if msg is None or msg.body is None:
+        await _cb_notify(event, " ")
         return
-    await _admin_resend_message(event._ensure_bot(), msg, **kwargs)
+    text = kwargs["text"]
+    attachments = kwargs.get("attachments")
+    parse_mode = kwargs.get("parse_mode")
+    if attachments is None:
+        attachments = []
+    await msg.edit(text=text, attachments=attachments, parse_mode=parse_mode)
+    await _cb_notify(event, kwargs.get("notification", " "))
 
 
 def _main_kb() -> InlineKeyboardBuilder:
@@ -185,12 +165,11 @@ async def cb_main(event: MessageCallback, context: BaseContext) -> None:
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await event.answer(notification="")
+        return await _cb_notify(event, " ")
     if not is_bot_admin(cb.user.user_id):
-        return await event.answer(notification=T.BOT_ADMIN_DENIED)
+        return await _cb_notify(event, T.BOT_ADMIN_DENIED)
     await context.clear()
-    await event.answer(notification="")
-    await _admin_resend_from_callback(
+    await _admin_edit_from_callback(
         event,
         text="Админ-панель бота. Выберите раздел:",
         attachments=[_main_kb().as_markup()],
@@ -202,17 +181,16 @@ async def cb_groups(event: MessageCallback, context: BaseContext, db: Database) 
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await event.answer(notification="")
+        return await _cb_notify(event, " ")
     if not is_bot_admin(cb.user.user_id):
-        return await event.answer(notification=T.BOT_ADMIN_DENIED)
+        return await _cb_notify(event, T.BOT_ADMIN_DENIED)
     page = int((cb.payload or "").split(":")[-1])
     objs = await db.list_objects()
     if not objs:
         text = "Групп (объектов) пока нет. Зарегистрируйте через кнопку ниже или /set в группе."
     else:
         text = f"Группы (стр. {page + 1}): нажмите для деталей."
-    await event.answer(notification="")
-    await _admin_resend_from_callback(
+    await _admin_edit_from_callback(
         event,
         text=text,
         attachments=[_groups_kb(objs, page).as_markup()],
@@ -224,13 +202,13 @@ async def cb_group_detail(event: MessageCallback, context: BaseContext, db: Data
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await event.answer(notification="")
+        return await _cb_notify(event, " ")
     if not is_bot_admin(cb.user.user_id):
-        return await event.answer(notification=T.BOT_ADMIN_DENIED)
+        return await _cb_notify(event, T.BOT_ADMIN_DENIED)
     oid = int((cb.payload or "").split(":")[-1])
     o = await db.get_object_by_id(oid)
     if not o:
-        return await event.answer(notification="Нет объекта")
+        return await _cb_notify(event, "Нет объекта")
     st = "на паузе" if o.is_paused else "активен"
     text = (
         f"<b>{o.name}</b>\n"
@@ -238,8 +216,7 @@ async def cb_group_detail(event: MessageCallback, context: BaseContext, db: Data
         f"id чата: <code>{o.group_chat_id}</code>\n"
         f"Статус: {st}"
     )
-    await event.answer(notification="")
-    await _admin_resend_from_callback(
+    await _admin_edit_from_callback(
         event,
         text=text,
         attachments=[_group_detail_kb(o).as_markup()],
@@ -252,15 +229,14 @@ async def cb_group_del_confirm(event: MessageCallback, context: BaseContext, db:
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await event.answer(notification="")
+        return await _cb_notify(event, " ")
     if not is_bot_admin(cb.user.user_id):
-        return await event.answer(notification=T.BOT_ADMIN_DENIED)
+        return await _cb_notify(event, T.BOT_ADMIN_DENIED)
     oid = int((cb.payload or "").split(":")[-1])
     o = await db.get_object_by_id(oid)
     if not o:
-        return await event.answer(notification="Нет объекта")
-    await event.answer(notification="")
-    await _admin_resend_from_callback(
+        return await _cb_notify(event, "Нет объекта")
+    await _admin_edit_from_callback(
         event,
         text=f"Удалить объект «{o.name}» и все привязки охранников к нему?",
         attachments=[_confirm_del_kb(oid).as_markup()],
@@ -274,23 +250,22 @@ async def cb_group_actions(event: MessageCallback, context: BaseContext, db: Dat
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await event.answer(notification="")
+        return await _cb_notify(event, " ")
     if not is_bot_admin(cb.user.user_id):
-        return await event.answer(notification=T.BOT_ADMIN_DENIED)
+        return await _cb_notify(event, T.BOT_ADMIN_DENIED)
     parts = (cb.payload or "").split(":")
     action, oid_s = parts[1], parts[2]
     oid = int(oid_s)
     o = await db.get_object_by_id(oid)
     if not o:
-        return await event.answer(notification="Нет объекта")
+        return await _cb_notify(event, "Нет объекта")
     if action == "ps":
         await db.set_object_paused(oid, True)
     elif action == "up":
         await db.set_object_paused(oid, False)
     elif action == "dy":
         await db.delete_object(oid)
-        await event.answer(notification="")
-        await _admin_resend_from_callback(
+        await _admin_edit_from_callback(
             event,
             text="Объект удалён.",
             attachments=[_main_kb().as_markup()],
@@ -305,12 +280,12 @@ async def cb_group_actions(event: MessageCallback, context: BaseContext, db: Dat
         f"id чата: <code>{o.group_chat_id}</code>\n"
         f"Статус: {st}"
     )
-    await event.answer(notification="Готово")
-    await _admin_resend_from_callback(
+    await _admin_edit_from_callback(
         event,
         text=text,
         attachments=[_group_detail_kb(o).as_markup()],
         parse_mode=ParseMode.HTML,
+        notification="Готово",
     )
 
 
@@ -319,17 +294,16 @@ async def cb_users(event: MessageCallback, context: BaseContext, db: Database) -
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await event.answer(notification="")
+        return await _cb_notify(event, " ")
     if not is_bot_admin(cb.user.user_id):
-        return await event.answer(notification=T.BOT_ADMIN_DENIED)
+        return await _cb_notify(event, T.BOT_ADMIN_DENIED)
     page = int((cb.payload or "").split(":")[-1])
     rows = await db.list_guards()
     if not rows:
         text = "Охранников нет. Добавьте через «Привязать охранника» или ссылку из /bind в группе."
     else:
         text = f"Охранники (стр. {page + 1}). Нажмите, чтобы снять привязку."
-    await event.answer(notification="")
-    await _admin_resend_from_callback(
+    await _admin_edit_from_callback(
         event,
         text=text,
         attachments=[_users_kb(rows, page).as_markup()],
@@ -341,19 +315,19 @@ async def cb_remove_guard(event: MessageCallback, context: BaseContext, db: Data
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await event.answer(notification="")
+        return await _cb_notify(event, " ")
     if not is_bot_admin(cb.user.user_id):
-        return await event.answer(notification=T.BOT_ADMIN_DENIED)
+        return await _cb_notify(event, T.BOT_ADMIN_DENIED)
     uid = int((cb.payload or "").split(":")[-1])
     ok = await db.remove_guard(uid)
-    await event.answer(notification="Снято" if ok else "Не найден")
     rows = await db.list_guards()
     page = 0
     text = "Охранники." if rows else "Список пуст."
-    await _admin_resend_from_callback(
+    await _admin_edit_from_callback(
         event,
         text=text,
         attachments=[_users_kb(rows, page).as_markup()],
+        notification="Снято" if ok else "Не найден",
     )
 
 
@@ -362,14 +336,13 @@ async def cb_add_guard_pick(event: MessageCallback, context: BaseContext, db: Da
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await event.answer(notification="")
+        return await _cb_notify(event, " ")
     if not is_bot_admin(cb.user.user_id):
-        return await event.answer(notification=T.BOT_ADMIN_DENIED)
+        return await _cb_notify(event, T.BOT_ADMIN_DENIED)
     objs = await db.list_objects()
     if not objs:
-        return await event.answer(notification="Сначала создайте объект.")
-    await event.answer(notification="")
-    await _admin_resend_from_callback(
+        return await _cb_notify(event, "Сначала создайте объект.")
+    await _admin_edit_from_callback(
         event,
         text="Выберите объект, к которому привязать охранника:",
         attachments=[_pick_object_kb(objs, "adm:bd:").as_markup()],
@@ -381,14 +354,13 @@ async def cb_add_guard_object(event: MessageCallback, context: BaseContext) -> N
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await event.answer(notification="")
+        return await _cb_notify(event, " ")
     if not is_bot_admin(cb.user.user_id):
-        return await event.answer(notification=T.BOT_ADMIN_DENIED)
+        return await _cb_notify(event, T.BOT_ADMIN_DENIED)
     oid = int((cb.payload or "").split(":")[-1])
     await context.set_state(AdminStates.wait_guard_user_id)
     await context.update_data(admin_bind_object_id=oid)
-    await event.answer(notification="")
-    await _admin_resend_from_callback(
+    await _admin_edit_from_callback(
         event,
         text="Отправьте числовой user id охранника в MAX (только цифры, одним сообщением).\n"
         "Отмена: /cancel",
@@ -439,12 +411,11 @@ async def cb_new_group(event: MessageCallback, context: BaseContext) -> None:
     cb = event.callback
     msg = event.message
     if msg is None or msg.body is None:
-        return await event.answer(notification="")
+        return await _cb_notify(event, " ")
     if not is_bot_admin(cb.user.user_id):
-        return await event.answer(notification=T.BOT_ADMIN_DENIED)
+        return await _cb_notify(event, T.BOT_ADMIN_DENIED)
     await context.set_state(AdminStates.wait_group_chat_id)
-    await event.answer(notification="")
-    await _admin_resend_from_callback(
+    await _admin_edit_from_callback(
         event,
         text="Отправьте id группового чата в MAX (целое число).\n"
         "/cancel — отмена.",
